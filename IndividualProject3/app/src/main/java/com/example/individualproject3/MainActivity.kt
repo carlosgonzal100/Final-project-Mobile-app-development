@@ -183,7 +183,7 @@ fun KodableApp() {
                 },
                 onPlayAsChild = {
                     if (currentChild != null) {
-                        currentScreen = Screen.MAIN_MENU
+                        currentScreen = Screen.LEVEL_SELECT
                     }
                 },
                 onOpenEditor = {
@@ -200,20 +200,20 @@ fun KodableApp() {
             )
         }
 
-        // 3) MAIN MENU — shown only when a child is selected
         Screen.MAIN_MENU -> {
             MainMenuScreen(
                 currentChild = currentChild!!,
                 onBackToParent = { currentScreen = Screen.PARENT_HOME },
-                onPlay = { currentScreen = Screen.LEVEL_SELECT },
-                onOpenLevelEditor = { currentScreen = Screen.LEVEL_EDITOR }
+                onSelectDifficulty = { difficulty ->
+                    currentScreen = Screen.LEVEL_SELECT
+                }
             )
         }
 
         Screen.LEVEL_SELECT -> {
             LevelSelectScreen(
                 levels = allLevels,
-                onBack = { currentScreen = Screen.MAIN_MENU },
+                onBack = { currentScreen = Screen.PARENT_HOME },
                 onSelectGame = { level, gameMap ->
                     selectedLevel = level
                     selectedGameMap = gameMap
@@ -221,6 +221,7 @@ fun KodableApp() {
                 }
             )
         }
+
 
         Screen.GAME -> {
             GameScreen(
@@ -252,30 +253,15 @@ fun KodableApp() {
 
 
 
-// ---------- MAIN MENU SCREEN ----------
 
 // ---------- MAIN MENU SCREEN (per-child) ----------
-// ---------- MAIN MENU SCREEN (per-child) ----------
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainMenuScreen(
     currentChild: ChildAccount,
     onBackToParent: () -> Unit,
-    onPlay: () -> Unit,
-    onOpenLevelEditor: () -> Unit
+    onSelectDifficulty: (Difficulty) -> Unit
 ) {
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Welcome, ${currentChild.name}") },
-                navigationIcon = {
-                    IconButton(onClick = onBackToParent) {
-                        Text("<")
-                    }
-                }
-            )
-        }
-    ) { padding ->
+    Scaffold { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -285,23 +271,33 @@ fun MainMenuScreen(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
-                "Dungeon Coding Game",
+                "Welcome, ${currentChild.name}",
                 style = MaterialTheme.typography.headlineMedium
             )
+
             Spacer(Modifier.height(24.dp))
 
-            Button(onClick = onPlay, modifier = Modifier.fillMaxWidth()) {
-                Text("Play Levels")
+            Text("Choose difficulty:", style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(12.dp))
+
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Button(onClick = { onSelectDifficulty(Difficulty.EASY) }) {
+                    Text("Easy")
+                }
+                Button(onClick = { onSelectDifficulty(Difficulty.HARD) }) {
+                    Text("Hard")
+                }
             }
 
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(24.dp))
 
-            Button(onClick = onOpenLevelEditor, modifier = Modifier.fillMaxWidth()) {
-                Text("Level Editor")
+            Button(onClick = onBackToParent) {
+                Text("Back")
             }
         }
     }
 }
+
 
 
 
@@ -685,11 +681,16 @@ fun LevelSelectScreen(
 ) {
     val context = LocalContext.current
 
-    // Track which game we're picking a custom for, if any
-    var customPickerGameId by remember { mutableStateOf<String?>(null) }
+    // All saved custom levels
+    var customLevels by remember { mutableStateOf<List<SavedCustomLevel>>(emptyList()) }
+    var showCustomDialog by remember { mutableStateOf(false) }
 
-    // Re-read applied mappings whenever we come back or change them
-    var appliedMappings by remember { mutableStateOf(loadAppliedMappings(context)) }
+    // Load custom levels when we enter this screen
+    LaunchedEffect(Unit) {
+        customLevels = loadCustomLevels(context)
+    }
+
+    val scrollState = rememberScrollState()
 
     Scaffold(
         topBar = {
@@ -708,7 +709,9 @@ fun LevelSelectScreen(
                 .fillMaxSize()
                 .padding(padding)
                 .padding(16.dp)
+                .verticalScroll(scrollState)   // 🔹 now scrollable
         ) {
+            // ---- Built-in levels & games ----
             levels.forEach { level ->
                 Text(
                     "${level.name} (${level.difficulty})",
@@ -717,145 +720,121 @@ fun LevelSelectScreen(
                 Spacer(Modifier.height(8.dp))
 
                 level.games.forEach { game ->
-                    val isCustomApplied = appliedMappings.containsKey(game.id)
-
-                    // Play button: uses custom GameMap if one is applied
                     Button(
-                        onClick = {
-                            val mapping = loadAppliedMappings(context)
-                            val customId = mapping[game.id]
-                            if (customId != null) {
-                                val allCustom = loadCustomLevels(context)
-                                val custom = allCustom.find { it.id == customId }
-                                if (custom != null) {
-                                    val customMap = custom.toGameMap(idOverride = game.id)
-                                    onSelectGame(level, customMap)
-                                    return@Button
-                                }
-                            }
-                            // Fallback: default map
-                            onSelectGame(level, game)
-                        },
+                        onClick = { onSelectGame(level, game) },
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        if (isCustomApplied) {
-                            Text("Play game: ${game.id} (custom)")
-                        } else {
-                            Text("Play game: ${game.id}")
-                        }
+                        Text("Play game: ${game.id}")
                     }
-
-                    Spacer(Modifier.height(4.dp))
-
-                    // Custom button: open picker dialog
-                    OutlinedButton(
-                        onClick = { customPickerGameId = game.id },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Custom")
-                    }
-
                     Spacer(Modifier.height(12.dp))
                 }
 
                 Spacer(Modifier.height(16.dp))
             }
+
+            Spacer(Modifier.height(24.dp))
+            Divider()
+            Spacer(Modifier.height(12.dp))
+
+            // ---- Custom levels section (single button) ----
+            Text("Custom Levels", style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(8.dp))
+
+            if (customLevels.isEmpty()) {
+                Text(
+                    "No custom levels saved yet.\nUse the Level Editor to create one.",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            } else {
+                Button(
+                    onClick = { showCustomDialog = true },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Play Custom Level")
+                }
+            }
         }
 
-        // Custom picker dialog
-        val targetGameId = customPickerGameId
-        if (targetGameId != null) {
-            CustomLevelPickerDialog(
-                gameId = targetGameId,
-                onDismiss = { customPickerGameId = null },
-                onApplied = {
-                    // Refresh mapping so UI updates (shows "(custom)")
-                    appliedMappings = loadAppliedMappings(context)
+        // Dialog to choose which custom level to play
+        if (showCustomDialog) {
+            PlayCustomLevelDialog(
+                customLevels = customLevels,
+                onDismiss = { showCustomDialog = false },
+                onPlay = { chosen ->
+                    val gameMap = chosen.toGameMap(idOverride = chosen.id)
+                    val level = Level(
+                        id = "custom_${chosen.id}",
+                        name = "Custom: ${chosen.id}",
+                        difficulty = chosen.difficulty,
+                        games = listOf(gameMap)
+                    )
+                    onSelectGame(level, gameMap)
+                    showCustomDialog = false
                 }
             )
         }
     }
 }
 
-@Composable
-fun CustomLevelPickerDialog(
-    gameId: String,
-    onDismiss: () -> Unit,
-    onApplied: () -> Unit
-) {
-    val context = LocalContext.current
-    val customLevels = remember { loadCustomLevels(context) }
 
+@Composable
+fun PlayCustomLevelDialog(
+    customLevels: List<SavedCustomLevel>,
+    onDismiss: () -> Unit,
+    onPlay: (SavedCustomLevel) -> Unit
+) {
     var selected by remember { mutableStateOf<SavedCustomLevel?>(null) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Choose custom level for $gameId") },
+        title = { Text("Choose a custom level") },
         text = {
             Column {
-                if (customLevels.isEmpty()) {
-                    Text("No custom levels saved yet.\nUse the Level Editor to create some.")
-                } else {
-                    Text("Tap a custom level to select it:", style = MaterialTheme.typography.bodyMedium)
-                    Spacer(Modifier.height(8.dp))
+                Text(
+                    "Tap a custom level to select it:",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Spacer(Modifier.height(8.dp))
 
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 260.dp)
-                            .verticalScroll(rememberScrollState())
-                    ) {
-                        customLevels.forEach { lvl ->
-                            val isSelected = selected?.id == lvl.id
-                            OutlinedButton(
-                                onClick = { selected = lvl },
-                                modifier = Modifier.fillMaxWidth(),
-                                border = if (isSelected)
-                                    ButtonDefaults.outlinedButtonBorder.copy(width = 3.dp)
-                                else
-                                    ButtonDefaults.outlinedButtonBorder
-                            ) {
-                                Text("${lvl.id} (${lvl.difficulty}, ${lvl.width}x${lvl.height})")
-                            }
-                            Spacer(Modifier.height(4.dp))
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 260.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    customLevels.forEach { lvl ->
+                        val isSelected = selected?.id == lvl.id
+                        OutlinedButton(
+                            onClick = { selected = lvl },
+                            modifier = Modifier.fillMaxWidth(),
+                            border = if (isSelected)
+                                ButtonDefaults.outlinedButtonBorder.copy(width = 3.dp)
+                            else
+                                ButtonDefaults.outlinedButtonBorder
+                        ) {
+                            Text("${lvl.id} (${lvl.difficulty}, ${lvl.width}x${lvl.height})")
                         }
+                        Spacer(Modifier.height(4.dp))
                     }
-
-                    Spacer(Modifier.height(8.dp))
-
-                    Text(
-                        text = "The last applied custom will stay on this slot\nuntil you change it or clear it.",
-                        style = MaterialTheme.typography.bodySmall
-                    )
                 }
+
+                Spacer(Modifier.height(8.dp))
+
+                Text(
+                    text = "The custom level you pick will be played right away.",
+                    style = MaterialTheme.typography.bodySmall
+                )
             }
         },
         confirmButton = {
-            Row {
-                // Button to clear custom and go back to default
-                TextButton(
-                    onClick = {
-                        clearCustomFromGame(context, gameId)
-                        onApplied()
-                        onDismiss()
-                    }
-                ) {
-                    Text("Use Default")
+            TextButton(
+                enabled = (selected != null),
+                onClick = {
+                    val chosen = selected ?: return@TextButton
+                    onPlay(chosen)
                 }
-
-                Spacer(Modifier.width(8.dp))
-
-                TextButton(
-                    enabled = (selected != null),
-                    onClick = {
-                        val chosen = selected ?: return@TextButton
-                        applyCustomToGame(context, gameId, chosen.id)
-                        onApplied()
-                        onDismiss()
-                    }
-                ) {
-                    Text("Apply")
-                }
+            ) {
+                Text("Play")
             }
         },
         dismissButton = {
@@ -865,6 +844,7 @@ fun CustomLevelPickerDialog(
         }
     )
 }
+
 
 
 
@@ -1650,12 +1630,131 @@ fun createAllLevels(): List<Level> {
         tileIds = easy1Tiles
     )
 
+    val easy2Tiles = listOf(
+        listOf("tl_lower", "top_lower", "top_lower", "top_lower", "top_lower", "top_lower", "top_lower", "top_lower", "top_lower", "tr_lower"),
+        listOf("left_lower", "floor", "floor", "floor", "floor", "floor", "floor", "floor", "floor", "right_lower"),
+        listOf("left_lower", "floor", "top_upper", "top_upper", "top_upper", "tl_upper", "bottom_lower", "bottom_lower", "bottom_lower", "br_lower"),
+        listOf("left_lower", "floor", "floor", "floor", "floor", "right_lower", "empty", "empty", "empty", "empty"),
+        listOf("bl_lower", "bottom_lower", "bottom_lower", "inner_tr", "floor", "right_lower", "empty", "empty", "empty", "empty"),
+        listOf("empty", "empty", "empty", "left_lower", "floor", "inner_bl", "top_lower", "top_lower", "top_lower", "tr_lower"),
+        listOf("empty", "empty", "empty", "left_lower", "floor", "floor", "floor", "floor", "floor", "right_lower"),
+        listOf("empty", "empty", "empty", "bl_lower", "bottom_lower", "bottom_lower", "bottom_lower", "inner_tr", "floor", "right_lower"),
+        listOf("empty", "empty", "empty", "empty", "empty", "empty", "empty", "left_lower", "floor", "right_lower"),
+        listOf("empty", "empty", "empty", "empty", "empty", "empty", "empty", "bl_lower", "bottom_lower", "br_lower")
+    )
+
+    val easyGame2 = gameMapFromTileIds(
+        id = "easy level 2",
+        startX = 8,
+        startY = 8,
+        goalX = 8,
+        goalY = 1,
+        tileIds = easy2Tiles
+    )
+
+
+    val easy3Tiles = listOf(
+        listOf("tl_lower", "top_lower", "top_lower", "top_lower", "top_lower", "top_lower", "empty", "top_lower", "top_lower", "tr_lower"),
+        listOf("left_lower", "floor", "floor", "floor", "floor", "right_lower", "empty", "left_lower", "floor", "right_lower"),
+        listOf("left_lower", "floor", "inner_wall", "inner_wall", "floor", "inner_bl", "top_lower", "inner_br", "floor", "right_lower"),
+        listOf("left_lower", "floor", "floor", "floor", "floor", "floor", "floor", "floor", "floor", "right_lower"),
+        listOf("left_lower", "top_upper", "top_upper", "top_upper", "floor", "top_upper", "top_upper", "top_upper", "top_upper", "right_lower"),
+        listOf("left_lower", "floor", "floor", "floor", "floor", "floor", "floor", "floor", "floor", "right_lower"),
+        listOf("left_lower", "floor", "inner_tl", "inner_tr", "floor", "inner_wall", "inner_wall", "inner_wall", "floor", "right_lower"),
+        listOf("left_lower", "floor", "right_lower", "left_lower", "floor", "inner_wall", "inner_wall", "inner_wall", "floor", "right_lower"),
+        listOf("left_lower", "floor", "right_lower", "left_lower", "floor", "floor", "floor", "floor", "floor", "right_lower"),
+        listOf("bl_lower", "bottom_lower", "br_lower", "bl_lower", "bottom_lower", "bottom_lower", "bottom_lower", "bottom_lower", "bottom_lower", "br_lower")
+    )
+
+    val easyGame3 = gameMapFromTileIds(
+        id = "easy level 3",
+        startX = 1,
+        startY = 8,
+        goalX = 8,
+        goalY = 1,
+        tileIds = easy3Tiles
+    )
+
+    val hard1Tiles = listOf(
+        listOf("water", "water", "water", "water", "inner_wall", "water", "water", "water", "water", "water", "water", "water"),
+        listOf("left_lower", "floor", "floor", "floor", "floor", "inner_wall", "water", "water", "water", "water", "water", "water"),
+        listOf("left_lower", "floor", "inner_wall", "floor", "floor", "floor", "top_lower", "top_lower", "top_lower", "top_lower", "top_lower", "water"),
+        listOf("left_lower", "floor", "inner_wall", "floor", "floor", "floor", "floor", "floor", "floor", "floor", "floor", "water"),
+        listOf("left_lower", "floor", "floor", "floor", "floor", "floor", "floor", "floor", "floor", "floor", "floor", "right_lower"),
+        listOf("bl_lower", "bottom_lower", "left_lower", "floor", "floor", "floor", "inner_tl", "bottom_lower", "bottom_lower", "bottom_lower", "bottom_lower", "br_lower"),
+        listOf("water", "water", "left_lower", "floor", "floor", "floor", "right_lower", "water", "water", "water", "water", "water"),
+        listOf("water", "tl_lower", "inner_br", "floor", "floor", "floor", "right_lower", "water", "water", "water", "water", "water"),
+        listOf("tl_lower", "inner_br", "floor", "floor", "floor", "floor", "inner_wall", "water", "water", "water", "water", "water"),
+        listOf("left_lower", "floor", "floor", "floor", "floor", "inner_wall", "water", "water", "water", "water", "water", "water"),
+        listOf("left_lower", "floor", "floor", "floor", "inner_wall", "water", "water", "water", "water", "water", "water", "water"),
+        listOf("water", "water", "water", "water", "water", "water", "water", "water", "water", "water", "water", "water")
+    )
+
+    val hardGame1 = gameMapFromTileIds(
+        id = "Hard level 1",
+        startX = 2,
+        startY = 10,
+        goalX = 10,
+        goalY = 4,
+        tileIds = hard1Tiles
+    )
+
+    val hard2Tiles = listOf(
+        listOf("water", "top_upper", "floor", "floor", "floor", "floor", "top_upper", "floor", "floor", "floor", "top_upper", "water"),
+        listOf("water", "floor", "floor", "top_upper", "floor", "floor", "floor", "water", "top_upper", "floor", "floor", "water"),
+        listOf("water", "floor", "water", "water", "inner_wall", "floor", "floor", "inner_wall", "water", "water", "floor", "water"),
+        listOf("water", "floor", "water", "water", "inner_wall", "floor", "floor", "inner_wall", "water", "water", "floor", "water"),
+        listOf("water", "floor", "water", "water", "inner_wall", "floor", "floor", "inner_wall", "water", "water", "floor", "water"),
+        listOf("water", "floor", "water", "water", "inner_wall", "floor", "floor", "inner_wall", "water", "water", "floor", "water"),
+        listOf("water", "floor", "water", "water", "water", "water", "water", "water", "top_upper", "water", "floor", "water"),
+        listOf("top_upper", "floor", "floor", "floor", "floor", "floor", "floor", "floor", "floor", "floor", "floor", "top_upper"),
+        listOf("water", "water", "water", "floor", "water", "inner_wall", "water", "inner_wall", "floor", "water", "water", "water"),
+        listOf("water", "water", "water", "floor", "water", "inner_wall", "water", "inner_wall", "floor", "water", "water", "water"),
+        listOf("water", "water", "water", "floor", "floor", "floor", "floor", "floor", "floor", "top_upper", "water", "water"),
+        listOf("water", "water", "water", "water", "water", "water", "water", "water", "water", "water", "water", "water")
+    )
+
+    val hardGame2 = gameMapFromTileIds(
+        id = "Hard level 2",
+        startX = 3,
+        startY = 10,
+        goalX = 5,
+        goalY = 5,
+        tileIds = hard2Tiles
+    )
+
+    val hard3Tiles = listOf(
+        listOf("tl_upper", "top_upper", "top_upper", "top_upper", "top_upper", "top_upper", "top_upper", "top_upper", "top_upper", "top_upper", "top_upper", "top_upper", "top_upper", "tr_upper"),
+        listOf("left_upper", "tl_lower", "top_lower", "top_lower", "top_lower", "top_lower", "top_lower", "top_lower", "top_lower", "top_lower", "top_lower", "top_lower", "tr_lower", "right_upper"),
+        listOf("left_upper", "left_lower", "water", "inner_wall", "water", "water", "water", "water", "water", "water", "water", "water", "right_lower", "right_upper"),
+        listOf("left_upper", "left_lower", "floor", "floor", "floor", "floor", "floor", "floor", "floor", "floor", "floor", "inner_wall", "right_lower", "right_upper"),
+        listOf("left_upper", "left_lower", "floor", "floor", "floor", "inner_wall", "floor", "inner_wall", "floor", "floor", "floor", "water", "right_lower", "right_upper"),
+        listOf("left_upper", "left_lower", "floor", "floor", "floor", "inner_wall", "floor", "floor", "floor", "floor", "floor", "water", "right_lower", "right_upper"),
+        listOf("left_upper", "left_lower", "floor", "floor", "floor", "floor", "floor", "floor", "floor", "floor", "floor", "water", "right_lower", "right_upper"),
+        listOf("left_upper", "left_lower", "inner_wall", "floor", "floor", "inner_wall", "floor", "floor", "floor", "inner_wall", "floor", "water", "right_lower", "right_upper"),
+        listOf("left_upper", "left_lower", "inner_wall", "floor", "floor", "floor", "floor", "floor", "inner_wall", "floor", "floor", "water", "right_lower", "right_upper"),
+        listOf("left_upper", "left_lower", "floor", "floor", "floor", "floor", "floor", "floor", "floor", "floor", "floor", "water", "right_lower", "right_upper"),
+        listOf("left_upper", "left_lower", "floor", "floor", "floor", "floor", "inner_wall", "floor", "floor", "floor", "floor", "water", "right_lower", "right_upper"),
+        listOf("left_upper", "left_lower", "inner_wall", "water", "water", "water", "water", "water", "water", "water", "inner_wall", "water", "right_lower", "right_upper"),
+        listOf("left_upper", "bl_lower", "bottom_lower", "bottom_lower", "bottom_lower", "bottom_lower", "bottom_lower", "bottom_lower", "bottom_lower", "bottom_lower", "bottom_lower", "bottom_lower", "br_lower", "right_upper"),
+        listOf("bl_upper", "bottom_upper", "bottom_upper", "bottom_upper", "bottom_upper", "bottom_upper", "bottom_upper", "bottom_upper", "bottom_upper", "bottom_upper", "bottom_upper", "bottom_upper", "bottom_upper", "br_upper")
+    )
+
+    val hardGame3 = gameMapFromTileIds(
+        id = "hard level 3",
+        startX = 6,
+        startY = 7,
+        goalX = 7,
+        goalY = 4,
+        tileIds = hard3Tiles
+    )
+
     // -------- EASY LEVEL COLLECTION --------
     val easyLevel = Level(
         id = "easy_level",
         name = "Easy Dungeons",
         difficulty = Difficulty.EASY,
-        games = listOf(easyGame1)
+        games = listOf(easyGame1,easyGame2,easyGame3)
     )
 
     // -------- HARD LEVEL (placeholder for now) --------
@@ -1663,7 +1762,7 @@ fun createAllLevels(): List<Level> {
         id = "hard_level",
         name = "Hard Dungeons",
         difficulty = Difficulty.HARD,
-        games = emptyList()   // later you can add baked hardGame1, hardGame2, etc.
+        games = listOf(hardGame1, hardGame2,hardGame3)   // later you can add baked hardGame1, hardGame2, etc.
     )
 
     return listOf(easyLevel, hardLevel)
