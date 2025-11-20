@@ -41,3 +41,17 @@ data class AttemptLog(
     val movesUsed: Int,
     val timestampMillis: Long
 )
+
+data class ParentAccount(
+    val id: String,
+    val name: String,
+    val pin: String
+)
+
+data class ChildAccount(
+    val id: String,
+    val name: String,
+    val age: Int? = null,
+    val notes: String? = null,
+    val parentId: String
+)

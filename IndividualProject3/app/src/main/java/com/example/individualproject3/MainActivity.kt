@@ -1,6 +1,8 @@
 @file:OptIn(ExperimentalFoundationApi::class)
 package com.example.individualproject3
 
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import android.content.ClipData
 import android.content.ClipDescription
 import androidx.compose.foundation.background
@@ -43,6 +45,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.clickable
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.Alignment
@@ -90,18 +93,15 @@ class MainActivity : ComponentActivity() {
 
 // All the screens in your app
 enum class Screen {
+    PARENT_LOGIN,
+    PARENT_HOME,
     MAIN_MENU,
     LEVEL_SELECT,
     GAME,
-    PARENT_DASHBOARD,
-    LOGIN_KID,
-    LOGIN_PARENT,
-
-    LEVEL_EDITOR   ,
-    EDITOR_TEST              // 👈 NEW
-// NEW
-
+    LEVEL_EDITOR,
+    PARENT_STATS
 }
+
 
 data class Account(
     val username: String,
@@ -114,126 +114,168 @@ data class Account(
 
 @Composable
 fun KodableApp() {
-    var currentScreen by remember { mutableStateOf(Screen.MAIN_MENU) }
+    val context = LocalContext.current
 
-    // Normal game selection
-    var selectedLevel by remember { mutableStateOf<Level?>(null) }
-    var selectedGame by remember { mutableStateOf<GameMap?>(null) }
+    // -------------------------
+    // STATE for accounts
+    // -------------------------
+    var currentScreen by remember { mutableStateOf(Screen.PARENT_LOGIN) }
 
-    // Runtime test level from the editor
-    var editorTestLevel by remember { mutableStateOf<EditorTestLevel?>(null) }
+    var parentAccount by remember {
+        mutableStateOf(loadParentAccount(context))
+    }
 
-    // Accounts + who is logged in
+    var children by remember {
+        mutableStateOf(loadChildren(context))
+    }
+
+    var currentChild by remember {
+        mutableStateOf<ChildAccount?>(null)
+    }
+
+
+
+    // You can actually delete Account/currentKidName if you want,
+    // but I'll keep them and just make currentKidName actually used.
     val accounts = remember { mutableStateListOf<Account>() }
     var currentKidName by remember { mutableStateOf<String?>(null) }
-    var currentParentName by remember { mutableStateOf<String?>(null) }
 
-    // All built-in levels
+    // -------------------------
+    // GAME STATE
+    // -------------------------
+    var selectedLevel by remember { mutableStateOf<Level?>(null) }
+    var selectedGameMap by remember { mutableStateOf<GameMap?>(null) }
+
+    // All levels (easy + hard)
     val allLevels = remember { createAllLevels() }
 
+    // -------------------------
+    // SCREEN ROUTING
+    // -------------------------
     when (currentScreen) {
 
-        Screen.MAIN_MENU -> MainMenuScreen(
-            onPlayAsKid = {
-                // If kid not logged in yet, go to kid login first
-                if (currentKidName == null) {
-                    currentScreen = Screen.LOGIN_KID
-                } else {
-                    currentScreen = Screen.LEVEL_SELECT
+        Screen.PARENT_LOGIN -> {
+            ParentLoginScreen(
+                existingParent = parentAccount,
+                onParentCreatedOrLoggedIn = { parent ->
+                    parentAccount = parent
+                    // reload children after reset
+                    children = loadChildren(context)
+                    currentChild = null
+                    currentKidName = null
+                    currentScreen = Screen.PARENT_HOME
                 }
-            },
-            onParentDashboard = {
-                // If parent not logged in yet, go to parent login first
-                if (currentParentName == null) {
-                    currentScreen = Screen.LOGIN_PARENT
-                } else {
-                    currentScreen = Screen.PARENT_DASHBOARD
-                }
-            },
-            onOpenLevelEditor = {
-                currentScreen = Screen.LEVEL_EDITOR
-            }
-        )
-
-        Screen.LOGIN_KID -> LoginScreen(
-            isParent = false,
-            accounts = accounts,
-            onBack = { currentScreen = Screen.MAIN_MENU },
-            onLoggedIn = { username ->
-                currentKidName = username
-                currentScreen = Screen.LEVEL_SELECT
-            }
-        )
-
-        Screen.LOGIN_PARENT -> LoginScreen(
-            isParent = true,
-            accounts = accounts,
-            onBack = { currentScreen = Screen.MAIN_MENU },
-            onLoggedIn = { username ->
-                currentParentName = username
-                currentScreen = Screen.PARENT_DASHBOARD
-            }
-        )
-
-        Screen.LEVEL_SELECT -> LevelSelectScreen(
-            levels = allLevels,
-            onBack = { currentScreen = Screen.MAIN_MENU },
-            onSelectGame = { level, game ->
-                selectedLevel = level
-                selectedGame = game
-                currentScreen = Screen.GAME
-            }
-        )
-
-        Screen.GAME -> {
-            val level = selectedLevel
-            val game = selectedGame
-            if (level != null && game != null) {
-                GameScreen(
-                    level = level,
-                    gameMap = game,
-                    onBack = { currentScreen = Screen.LEVEL_SELECT }
-                )
-            } else {
-                // If something went wrong, send them back to level select
-                currentScreen = Screen.LEVEL_SELECT
-            }
+            )
         }
 
-        Screen.PARENT_DASHBOARD -> ParentDashboardScreen(
-            onBack = { currentScreen = Screen.MAIN_MENU }
-        )
+        Screen.PARENT_HOME -> {
+            ParentHomeScreen(
+                parent = parentAccount!!,
+                children = children,
+                currentChild = currentChild,
+                onChildrenChanged = { updated ->
+                    children = updated
+                    saveChildren(context, updated)
+                },
+                onSelectChild = { child ->
+                    currentChild = child
+                    currentKidName = child.name      // 🔹 IMPORTANT: set kid name here
+                },
+                onPlayAsChild = {
+                    if (currentChild != null) {
+                        currentScreen = Screen.MAIN_MENU
+                    }
+                },
+                onOpenEditor = {
+                    currentScreen = Screen.LEVEL_EDITOR
+                },
+                onViewStats = {
+                    currentScreen = Screen.PARENT_STATS
+                },
+                onLogout = {
+                    currentChild = null
+                    currentKidName = null
+                    currentScreen = Screen.PARENT_LOGIN
+                }
+            )
+        }
 
-        Screen.LEVEL_EDITOR -> LevelEditorScreen(
-            onBack = { currentScreen = Screen.MAIN_MENU }
-        )
+        // 3) MAIN MENU — shown only when a child is selected
+        Screen.MAIN_MENU -> {
+            MainMenuScreen(
+                currentChild = currentChild!!,
+                onBackToParent = { currentScreen = Screen.PARENT_HOME },
+                onPlay = { currentScreen = Screen.LEVEL_SELECT },
+                onOpenLevelEditor = { currentScreen = Screen.LEVEL_EDITOR }
+            )
+        }
 
+        Screen.LEVEL_SELECT -> {
+            LevelSelectScreen(
+                levels = allLevels,
+                onBack = { currentScreen = Screen.MAIN_MENU },
+                onSelectGame = { level, gameMap ->
+                    selectedLevel = level
+                    selectedGameMap = gameMap
+                    currentScreen = Screen.GAME
+                }
+            )
+        }
 
-        Screen.EDITOR_TEST -> {
-            val runtime = editorTestLevel
-            if (runtime != null) {
-                EditorTestScreen(
-                    testLevel = runtime,
-                    onBack = { currentScreen = Screen.LEVEL_EDITOR }
-                )
-            } else {
-                currentScreen = Screen.LEVEL_EDITOR
-            }
+        Screen.GAME -> {
+            GameScreen(
+                level = selectedLevel!!,
+                gameMap = selectedGameMap!!,
+                currentKidName = currentKidName,
+                onBack = { currentScreen = Screen.LEVEL_SELECT }
+            )
+        }
+
+        // 6) LEVEL EDITOR SCREEN
+        Screen.LEVEL_EDITOR -> {
+            LevelEditorScreen(
+                onBack = { currentScreen = Screen.PARENT_HOME }
+            )
+        }
+
+        // 🔹 Parent stats screen now gets the children list
+        Screen.PARENT_STATS -> {
+            ParentStatsScreen(
+                children = children,
+                onBack = { currentScreen = Screen.PARENT_HOME }
+            )
         }
     }
 }
 
 
 
+
+
 // ---------- MAIN MENU SCREEN ----------
 
+// ---------- MAIN MENU SCREEN (per-child) ----------
+// ---------- MAIN MENU SCREEN (per-child) ----------
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainMenuScreen(
-    onPlayAsKid: () -> Unit,
-    onParentDashboard: () -> Unit,
+    currentChild: ChildAccount,
+    onBackToParent: () -> Unit,
+    onPlay: () -> Unit,
     onOpenLevelEditor: () -> Unit
 ) {
-    Scaffold { padding ->
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Welcome, ${currentChild.name}") },
+                navigationIcon = {
+                    IconButton(onClick = onBackToParent) {
+                        Text("<")
+                    }
+                }
+            )
+        }
+    ) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -242,36 +284,396 @@ fun MainMenuScreen(
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text("Dungeon Coding Game", style = MaterialTheme.typography.headlineMedium)
+            Text(
+                "Dungeon Coding Game",
+                style = MaterialTheme.typography.headlineMedium
+            )
             Spacer(Modifier.height(24.dp))
 
-            Button(onClick = onPlayAsKid) {
-                Text("Play as Kid")
+            Button(onClick = onPlay, modifier = Modifier.fillMaxWidth()) {
+                Text("Play Levels")
             }
 
             Spacer(Modifier.height(16.dp))
 
-            Button(onClick = onParentDashboard) {
-                Text("Parent Dashboard")
-            }
-
-            Spacer(Modifier.height(16.dp))
-
-            Button(onClick = onOpenLevelEditor) {
+            Button(onClick = onOpenLevelEditor, modifier = Modifier.fillMaxWidth()) {
                 Text("Level Editor")
-            }
-
-            Spacer(Modifier.height(16.dp))
-
-            Button(onClick = {
-                // Optional: exit app here if you want
-                // (context as? Activity)?.finish()
-            }) {
-                Text("Exit")
             }
         }
     }
 }
+
+
+
+// ---------- PARENT LOGIN SCREEN ----------
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ParentLoginScreen(
+    existingParent: ParentAccount?,
+    onParentCreatedOrLoggedIn: (ParentAccount) -> Unit
+) {
+    val context = LocalContext.current
+
+    // if existing parent -> default login mode; else registration
+    var registrationMode by remember { mutableStateOf(existingParent == null) }
+
+    var name by remember { mutableStateOf("") }
+    var pin by remember { mutableStateOf("") }
+    var status by remember { mutableStateOf("") }
+
+    val hasExistingParent = existingParent != null
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Parent Login") }
+            )
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.Top,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+
+            if (registrationMode) {
+                Text(
+                    text = "Create Parent Account",
+                    style = MaterialTheme.typography.titleMedium
+                )
+                Spacer(Modifier.height(16.dp))
+
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Your Name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(8.dp))
+
+                OutlinedTextField(
+                    value = pin,
+                    onValueChange = { value ->
+                        pin = value.filter { it.isDigit() }.take(6)
+                        status = ""
+                    },
+                    label = { Text("PIN (numbers)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(Modifier.height(16.dp))
+
+                Button(
+                    onClick = {
+                        if (name.isBlank() || pin.length < 3) {
+                            status = "Enter a name and a PIN (at least 3 digits)."
+                        } else {
+                            val parent = ParentAccount(
+                                id = "parent_1",
+                                name = name.trim(),
+                                pin = pin
+                            )
+                            saveParentAccount(context, parent)
+                            status = ""
+                            onParentCreatedOrLoggedIn(parent)
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Create Account")
+                }
+
+                if (hasExistingParent) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "This will overwrite the existing parent and children.",
+                        color = Color.Red,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            } else {
+                // LOGIN MODE
+                Text(
+                    text = "Welcome, ${existingParent!!.name}",
+                    style = MaterialTheme.typography.titleMedium
+                )
+                Spacer(Modifier.height(16.dp))
+
+                OutlinedTextField(
+                    value = pin,
+                    onValueChange = { value ->
+                        pin = value.filter { it.isDigit() }.take(6)
+                        status = ""
+                    },
+                    label = { Text("PIN") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(Modifier.height(16.dp))
+
+                Button(
+                    onClick = {
+                        val p = existingParent
+                        if (p != null && pin == p.pin) {
+                            status = ""
+                            onParentCreatedOrLoggedIn(p)
+                        } else {
+                            status = "Incorrect PIN."
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Login")
+                }
+
+                Spacer(Modifier.height(8.dp))
+
+                TextButton(
+                    onClick = {
+                        // delete old parent, children, and stats from internal storage
+                        context.deleteFile("parent_account.json")
+                        context.deleteFile("children.json")
+                        context.deleteFile("progress_log.csv")   // 🔹 reset stats too, if you want
+
+                        registrationMode = true
+                        status = "Old parent removed. Create a new parent account."
+                        name = ""
+                        pin = ""
+                    }
+                ) {
+                    Text("Register New Parent (Reset)")
+                }
+
+            }
+
+            if (status.isNotEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                Text(text = status, color = Color.Red)
+            }
+        }
+    }
+}
+
+
+// ---------- PARENT HOME SCREEN ----------
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ParentHomeScreen(
+    parent: ParentAccount,
+    children: List<ChildAccount>,
+    currentChild: ChildAccount?,
+    onChildrenChanged: (List<ChildAccount>) -> Unit,
+    onSelectChild: (ChildAccount) -> Unit,
+    onPlayAsChild: () -> Unit,
+    onOpenEditor: () -> Unit,
+    onViewStats: () -> Unit,
+    onLogout: () -> Unit
+) {
+    var showAddDialog by remember { mutableStateOf(false) }
+    var status by remember { mutableStateOf("") }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Parent Home") },
+                actions = {
+                    TextButton(onClick = onLogout) {
+                        Text("Logout")
+                    }
+                }
+            )
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(16.dp),
+            horizontalAlignment = Alignment.Start
+        ) {
+            Text("Logged in as: ${parent.name}", style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(8.dp))
+
+            Text("Children:", style = MaterialTheme.typography.titleSmall)
+            Spacer(Modifier.height(4.dp))
+
+            if (children.isEmpty()) {
+                Text("No children registered yet.")
+            } else {
+                children.forEach { child ->
+                    val isActive = currentChild?.id == child.id
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp)
+                            .clickable { onSelectChild(child) },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = child.name + if (isActive) " (Active)" else "",
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(
+                            onClick = {
+                                val updated = children.filter { it.id != child.id }
+                                onChildrenChanged(updated)
+                            }
+                        ) {
+                            Text("Remove")
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(8.dp))
+
+            Button(
+                onClick = { showAddDialog = true },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Register New Child")
+            }
+
+            Spacer(Modifier.height(16.dp))
+
+            Text("Current active child: ${currentChild?.name ?: "None"}")
+
+            Spacer(Modifier.height(8.dp))
+
+            // 🔹 3) Rename this button "Play Game"
+            Button(
+                onClick = {
+                    if (currentChild == null) {
+                        status = "Select a child first."
+                    } else {
+                        status = ""
+                        onPlayAsChild()
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Play Game")
+            }
+
+            Spacer(Modifier.height(8.dp))
+
+            Button(
+                onClick = onOpenEditor,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Open Level Editor")
+            }
+
+            Spacer(Modifier.height(8.dp))
+
+            // 🔹 New: View Stats button
+            Button(
+                onClick = onViewStats,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("View Stats")
+            }
+
+            if (status.isNotEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                Text(status, color = Color.Red)
+            }
+        }
+
+        if (showAddDialog) {
+            AddChildDialog(
+                onDismiss = { showAddDialog = false },
+                onChildCreated = { name, age, notes ->
+                    val newChild = ChildAccount(
+                        id = "child_${System.currentTimeMillis()}",
+                        name = name,
+                        age = age,
+                        notes = notes,
+                        parentId = parent.id
+                    )
+                    onChildrenChanged(children + newChild)
+                    showAddDialog = false
+                }
+            )
+        }
+    }
+}
+
+
+// ---------- DIALOG TO ADD CHILD ----------
+
+@Composable
+fun AddChildDialog(
+    onDismiss: () -> Unit,
+    onChildCreated: (String, Int?, String?) -> Unit
+) {
+    var name by remember { mutableStateOf("") }
+    var ageStr by remember { mutableStateOf("") }
+    var notes by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Register New Child") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Child Name") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = ageStr,
+                    onValueChange = { ageStr = it.filter { ch -> ch.isDigit() } },
+                    label = { Text("Age (optional)") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = notes,
+                    onValueChange = { notes = it },
+                    label = { Text("Notes (optional)") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                if (error.isNotEmpty()) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(error, color = Color.Red)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    if (name.isBlank()) {
+                        error = "Name is required."
+                    } else {
+                        val age = ageStr.takeIf { it.isNotBlank() }?.toIntOrNull()
+                        onChildCreated(name.trim(), age, notes.takeIf { it.isNotBlank() })
+                    }
+                }
+            ) {
+                Text("Save")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
 
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -977,38 +1379,56 @@ fun chooseWallSprite(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ParentDashboardScreen(
+    kidNames: List<String>,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
-    var totalAttempts by remember { mutableStateOf(0) }
-    var resultStats by remember { mutableStateOf<List<ResultStat>>(emptyList()) }
+
+    // All log entries from file
+    var allEntries by remember { mutableStateOf<List<ProgressEntry>>(emptyList()) }
+
+    // Which child is selected (null = all children of this parent)
+    var selectedKid by remember { mutableStateOf<String?>(null) }
 
     val scrollState = rememberScrollState()
 
     // Load stats once when screen opens
     LaunchedEffect(Unit) {
-        val entries = readProgressEntries(context)
-        totalAttempts = entries.size
+        allEntries = readProgressEntries(context)
+    }
 
-        val counts = entries.groupingBy { it.resultCode }.eachCount()
+    // Only consider entries for this parent's children
+    val kidSet = kidNames.toSet()
+    val entriesForThisParent = allEntries.filter { entry ->
+        entry.childName.isNotBlank() && entry.childName in kidSet
+    }
 
-        // We keep a consistent order + labels
-        val codesInOrder = listOf("SUCCESS", "HIT_WALL", "OUT_OF_BOUNDS", "NO_GOAL", "UNKNOWN")
+    // Then filter by selected child (if any)
+    val filteredEntries = if (selectedKid == null) {
+        entriesForThisParent
+    } else {
+        entriesForThisParent.filter { it.childName == selectedKid }
+    }
 
-        resultStats = codesInOrder.map { code ->
-            val count = counts[code] ?: 0
-            ResultStat(
-                code = code,
-                label = when (code) {
-                    "SUCCESS" -> "Success"
-                    "HIT_WALL" -> "Hit Wall"
-                    "OUT_OF_BOUNDS" -> "Out of Bounds"
-                    "NO_GOAL" -> "Finished w/o Goal"
-                    else -> "Other / Unknown"
-                },
-                count = count
-            )
-        }
+    val totalAttempts = filteredEntries.size
+
+    // Group by result code
+    val counts = filteredEntries.groupingBy { it.resultCode }.eachCount()
+    val codesInOrder = listOf("SUCCESS", "HIT_WALL", "OUT_OF_BOUNDS", "NO_GOAL", "UNKNOWN")
+
+    val resultStats: List<ResultStat> = codesInOrder.map { code ->
+        val count = counts[code] ?: 0
+        ResultStat(
+            code = code,
+            label = when (code) {
+                "SUCCESS" -> "Success"
+                "HIT_WALL" -> "Hit Wall"
+                "OUT_OF_BOUNDS" -> "Out of Bounds"
+                "NO_GOAL" -> "Finished w/o Goal"
+                else -> "Other / Unknown"
+            },
+            count = count
+        )
     }
 
     Scaffold(
@@ -1038,8 +1458,49 @@ fun ParentDashboardScreen(
 
             Spacer(Modifier.height(8.dp))
 
+            // 🔹 Child selector
+            if (kidNames.isNotEmpty()) {
+                Text("Filter by child:", style = MaterialTheme.typography.bodyMedium)
+                Spacer(Modifier.height(4.dp))
+
+                var dropdownExpanded by remember { mutableStateOf(false) }
+
+                Box {
+                    Button(onClick = { dropdownExpanded = true }) {
+                        Text(selectedKid ?: "All Children")
+                    }
+
+                    DropdownMenu(
+                        expanded = dropdownExpanded,
+                        onDismissRequest = { dropdownExpanded = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("All Children") },
+                            onClick = {
+                                selectedKid = null
+                                dropdownExpanded = false
+                            }
+                        )
+                        kidNames.forEach { name ->
+                            DropdownMenuItem(
+                                text = { Text(name) },
+                                onClick = {
+                                    selectedKid = name
+                                    dropdownExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(16.dp))
+            } else {
+                Text("No kid accounts found for this parent.")
+                Spacer(Modifier.height(16.dp))
+            }
+
             if (totalAttempts == 0) {
-                Text("No attempts logged yet. Have your child play a level first.")
+                Text("No attempts logged yet for this selection.")
             } else {
                 Text("Total Attempts: $totalAttempts")
                 Spacer(Modifier.height(16.dp))
@@ -1067,12 +1528,13 @@ fun ParentDashboardScreen(
             Spacer(Modifier.height(24.dp))
 
             Text(
-                text = "Note: Data is based on runs of the dungeon game.",
+                text = "Note: These stats are based on runs performed while logged in as each child.",
                 style = MaterialTheme.typography.bodySmall
             )
         }
     }
 }
+
 
 @Composable
 fun ResultBarRow(
@@ -1080,7 +1542,6 @@ fun ResultBarRow(
     count: Int,
     maxCount: Int
 ) {
-    // Guard: avoid division by zero
     val fraction = if (maxCount > 0) count.toFloat() / maxCount.toFloat() else 0f
 
     Column {
@@ -1110,6 +1571,7 @@ fun ResultBarRow(
 }
 
 data class ProgressEntry(
+    val childName: String,
     val levelId: String,
     val gameId: String,
     val resultCode: String,
@@ -1132,23 +1594,35 @@ fun readProgressEntries(context: Context): List<ProgressEntry> {
             .filter { it.isNotBlank() }
             .mapNotNull { line ->
                 val parts = line.split(',')
-                // Expected: timestamp, levelId, gameId, resultCode, commandsCount
-                if (parts.size >= 5) {
-                    val levelId = parts[1]
-                    val gameId = parts[2]
-                    val resultCode = parts[3]
-                    val commandsCount = parts[4].toIntOrNull() ?: 0
-                    ProgressEntry(levelId, gameId, resultCode, commandsCount)
-                } else {
-                    null
+
+                when {
+                    // NEW format: timestamp, childName, levelId, gameId, resultCode, commandsCount
+                    parts.size >= 6 -> {
+                        val childName = parts[1]
+                        val levelId = parts[2]
+                        val gameId = parts[3]
+                        val resultCode = parts[4]
+                        val commandsCount = parts[5].toIntOrNull() ?: 0
+                        ProgressEntry(childName, levelId, gameId, resultCode, commandsCount)
+                    }
+                    // OLD format (before child name): timestamp, levelId, gameId, resultCode, commandsCount
+                    parts.size >= 5 -> {
+                        val childName = ""  // unknown
+                        val levelId = parts[1]
+                        val gameId = parts[2]
+                        val resultCode = parts[3]
+                        val commandsCount = parts[4].toIntOrNull() ?: 0
+                        ProgressEntry(childName, levelId, gameId, resultCode, commandsCount)
+                    }
+                    else -> null
                 }
             }
             .toList()
-    } catch (e: Exception) {
-        // If file doesn't exist yet or read fails, just return empty list
+    } catch (_: Exception) {
         emptyList()
     }
 }
+
 
 // ---------- Demo data so the app actually runs ----------
 
@@ -1202,12 +1676,17 @@ fun createAllLevels(): List<Level> {
 fun GameScreen(
     level: Level,
     gameMap: GameMap,
+    currentKidName: String?,   // 🔹 must be here
     onBack: () -> Unit
 ) {
     // Hero starts at the map start location
     var heroPos by remember {
         mutableStateOf(gameMap.startX to gameMap.startY)
     }
+
+    // If this map came from the editor, it has a tile layout.
+    // In that case we should NOT use the auto outer-wall rings.
+    val hasTileLayout = gameMap.tileIds != null
 
     // NEW: track facing direction for sprite orientation
     var heroFacing by remember {
@@ -1481,7 +1960,12 @@ fun GameScreen(
                                         }
                                     }
 
-                                    val isOuter = isOuterWall(nextX, nextY, gameMap)
+                                    val isOuter = if (hasTileLayout) {
+                                        false            // editor maps rely purely on placed wall tiles
+                                    } else {
+                                        isOuterWall(nextX, nextY, gameMap)
+                                    }
+
                                     val isInner = gameMap.walls.contains(nextX to nextY)
                                     val isWater = gameMap.waterTiles.contains(nextX to nextY)
 
@@ -1599,13 +2083,15 @@ fun GameScreen(
                                 showResultDialog = true
                             }
 
-                            // 9) Log this attempt
                             logger.logAttempt(
+                                childName = currentKidName,
                                 levelId = level.id,
                                 gameId = gameMap.id,
                                 resultCode = if (runResultCode.isNotEmpty()) runResultCode else "UNKNOWN",
                                 commandsCount = program.size
                             )
+
+
 
                             isRunning = false
                         }
@@ -1670,3 +2156,168 @@ fun GameScreen(
         }
     }
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ParentStatsScreen(
+    children: List<ChildAccount>,
+    onBack: () -> Unit
+) {
+    val context = LocalContext.current
+    val scrollState = rememberScrollState()
+
+    var allEntries by remember { mutableStateOf<List<ProgressEntry>>(emptyList()) }
+    var selectedChildName by remember { mutableStateOf<String?>(null) }
+
+    // Load all entries once
+    LaunchedEffect(Unit) {
+        allEntries = readProgressEntries(context)
+    }
+
+    val childNames = children.map { it.name }.distinct()
+
+    // Filter entries for this parent’s children only
+    val entriesForTheseKids = allEntries.filter { e ->
+        e.childName.isNotBlank() && e.childName in childNames
+    }
+
+    // Then filter by selected child (or show all if null)
+    val filteredEntries = if (selectedChildName == null) {
+        entriesForTheseKids
+    } else {
+        entriesForTheseKids.filter { it.childName == selectedChildName }
+    }
+
+    val totalAttempts = filteredEntries.size
+
+    val counts = filteredEntries.groupingBy { it.resultCode }.eachCount()
+    val codesInOrder = listOf("SUCCESS", "HIT_WALL", "OUT_OF_BOUNDS", "NO_GOAL", "UNKNOWN")
+
+    val resultStats: List<ResultStat> = codesInOrder.map { code ->
+        val count = counts[code] ?: 0
+        ResultStat(
+            code = code,
+            label = when (code) {
+                "SUCCESS" -> "Success"
+                "HIT_WALL" -> "Hit Wall"
+                "OUT_OF_BOUNDS" -> "Out of Bounds"
+                "NO_GOAL" -> "Finished w/o Goal"
+                else -> "Other / Unknown"
+            },
+            count = count
+        )
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Progress Stats") },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Text("<")
+                    }
+                }
+            )
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(scrollState)
+                .padding(16.dp),
+            horizontalAlignment = Alignment.Start
+        ) {
+            Text("Child Progress Summary", style = MaterialTheme.typography.headlineSmall)
+            Spacer(Modifier.height(8.dp))
+
+            // Child selector
+            if (childNames.isNotEmpty()) {
+                Text("Filter by child:", style = MaterialTheme.typography.bodyMedium)
+                Spacer(Modifier.height(4.dp))
+
+                var dropdownExpanded by remember { mutableStateOf(false) }
+
+                Box {
+                    Button(onClick = { dropdownExpanded = true }) {
+                        Text(selectedChildName ?: "All Children")
+                    }
+
+                    DropdownMenu(
+                        expanded = dropdownExpanded,
+                        onDismissRequest = { dropdownExpanded = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("All Children") },
+                            onClick = {
+                                selectedChildName = null
+                                dropdownExpanded = false
+                            }
+                        )
+                        childNames.forEach { name ->
+                            DropdownMenuItem(
+                                text = { Text(name) },
+                                onClick = {
+                                    selectedChildName = name
+                                    dropdownExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(16.dp))
+            } else {
+                Text("No children registered.")
+                Spacer(Modifier.height(16.dp))
+            }
+
+            if (totalAttempts == 0) {
+                Text("No attempts logged yet for this selection.")
+            } else {
+                Text("Total Attempts: $totalAttempts")
+                Spacer(Modifier.height(16.dp))
+
+                Text("Attempts by Outcome:", style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(8.dp))
+
+                val maxCount = resultStats.maxOfOrNull { it.count } ?: 0
+
+                resultStats.forEach { stat ->
+                    if (stat.count > 0) {
+                        ResultBarRow(
+                            label = stat.label,
+                            count = stat.count,
+                            maxCount = maxCount
+                        )
+                        Spacer(Modifier.height(8.dp))
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(24.dp))
+            Text(
+                text = "Note: Stats are based on plays while logged in as each child.",
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
+    }
+}
+
+// Helper classes for stats
+data class LevelStat(
+    val levelId: String,
+    val gameId: String,
+    val total: Int,
+    val success: Int
+)
+
+private data class LevelStatMutable(
+    val levelId: String,
+    val gameId: String,
+    var total: Int = 0,
+    var success: Int = 0
+) {
+    fun toImmutable() = LevelStat(levelId, gameId, total, success)
+}
+
