@@ -7,12 +7,16 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+/**
+ * Handles writing gameplay attempts to a CSV log file.
+ * Each line: timestamp, childName, levelId, gameId, resultCode, commandsCount
+ */
 class ProgressLogger(private val context: Context) {
 
     private val fileName = "progress_log.csv"
-    private val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+    private val dateFormat =
+        SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
 
-    // NEW: this version logs childName too
     fun logAttempt(
         childName: String?,
         levelId: String,
@@ -22,8 +26,9 @@ class ProgressLogger(private val context: Context) {
     ) {
         val timestamp = dateFormat.format(Date())
         val safeChild = childName ?: ""
-        // timestamp,childName,levelId,gameId,resultCode,commandsCount
-        val line = "$timestamp,$safeChild,$levelId,$gameId,$resultCode,$commandsCount\n"
+
+        val line =
+            "$timestamp,$safeChild,$levelId,$gameId,$resultCode,$commandsCount\n"
 
         context.openFileOutput(fileName, Context.MODE_APPEND).use { fos ->
             fos.write(line.toByteArray())
@@ -31,21 +36,26 @@ class ProgressLogger(private val context: Context) {
     }
 }
 
-// ---------- Parent / Child storage in JSON ----------
+/* ---------------------------------------------------------
+   Parent & Child storage (JSON)
+   Stored in internal storage as JSON objects / arrays.
+--------------------------------------------------------- */
 
 private const val PARENT_FILE = "parent_account.json"
 private const val CHILDREN_FILE = "children.json"
 
-// -------- Parent storage --------
+/* ----------------- PARENT ACCOUNT ---------------------- */
 
+/**
+ * Loads the single parent account from JSON.
+ */
 fun loadParentAccount(context: Context): ParentAccount? {
     val file = context.getFileStreamPath(PARENT_FILE)
     if (!file.exists()) return null
 
-    val text = file.readText()
-    if (text.isBlank()) return null
-
+    val text = file.readText().ifBlank { return null }
     val obj = JSONObject(text)
+
     return ParentAccount(
         id = obj.getString("id"),
         name = obj.getString("name"),
@@ -53,6 +63,9 @@ fun loadParentAccount(context: Context): ParentAccount? {
     )
 }
 
+/**
+ * Saves parent account to JSON.
+ */
 fun saveParentAccount(context: Context, parent: ParentAccount) {
     val obj = JSONObject().apply {
         put("id", parent.id)
@@ -64,42 +77,46 @@ fun saveParentAccount(context: Context, parent: ParentAccount) {
     }
 }
 
-// -------- Children storage --------
+/* ------------------ CHILD ACCOUNTS ---------------------- */
 
+/**
+ * Loads all child accounts from JSON.
+ */
 fun loadChildren(context: Context): List<ChildAccount> {
     val file = context.getFileStreamPath(CHILDREN_FILE)
     if (!file.exists()) return emptyList()
 
-    val text = file.readText()
-    if (text.isBlank()) return emptyList()
-
+    val text = file.readText().ifBlank { return emptyList() }
     val arr = JSONArray(text)
-    val result = mutableListOf<ChildAccount>()
-    for (i in 0 until arr.length()) {
+
+    return List(arr.length()) { i ->
         val o = arr.getJSONObject(i)
-        result += ChildAccount(
+        ChildAccount(
             id = o.getString("id"),
             name = o.getString("name"),
-            age = if (o.has("age")) o.optInt("age") else null,
-            notes = if (o.has("notes")) o.optString("notes") else null,
+            age = o.optInt("age", -1).let { if (it == -1) null else it },
+            notes = o.optString("notes", null),
             parentId = o.getString("parentId")
         )
     }
-    return result
 }
 
+/**
+ * Saves all children to JSON array.
+ */
 fun saveChildren(context: Context, children: List<ChildAccount>) {
     val arr = JSONArray()
-    for (c in children) {
+    children.forEach { c ->
         val o = JSONObject().apply {
             put("id", c.id)
             put("name", c.name)
-            if (c.age != null) put("age", c.age)
-            if (c.notes != null) put("notes", c.notes)
+            c.age?.let { put("age", it) }
+            c.notes?.let { put("notes", it) }
             put("parentId", c.parentId)
         }
         arr.put(o)
     }
+
     context.openFileOutput(CHILDREN_FILE, Context.MODE_PRIVATE).use { out ->
         out.write(arr.toString().toByteArray())
     }

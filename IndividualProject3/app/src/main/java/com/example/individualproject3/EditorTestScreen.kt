@@ -14,13 +14,22 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
+/**
+ * Read-only preview of a level from the editor.
+ * Shows tiles + start/goal exactly as they were drawn in the grid.
+ */
 
+/**this file will eventually be used at some point in the future to
+ * test levels right from the editor instead of applying it to a custom
+ * level. the custom levels are for the developer only as of now
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EditorTestScreen(
     testLevel: EditorTestLevel,
     onBack: () -> Unit
 ) {
+    // Local palette used only for visual preview (same IDs as editor)
     val palette: List<PaletteTile> = listOf(
         PaletteTile("floor", "Floor", R.drawable.floor_tile, LogicalTileType.FLOOR),
         PaletteTile("inner_wall", "Inner Wall", R.drawable.inner_wall, LogicalTileType.WALL),
@@ -72,88 +81,88 @@ fun EditorTestScreen(
                     }
                 }
             )
-        },
-        content = { padding ->
-            Column(
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+
+            Text(
+                "Preview of your level exactly as you drew it.",
+                style = MaterialTheme.typography.bodySmall
+            )
+            Spacer(Modifier.height(12.dp))
+
+            Box(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .padding(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                    .background(Color(0xFF111111))
+                    .padding(4.dp)
             ) {
+                Column {
+                    for (y in 0 until testLevel.height) {
+                        Row {
+                            for (x in 0 until testLevel.width) {
+                                val id = testLevel.tileIds[y][x]
+                                val baseTile = paletteById[id]
 
-                Text(
-                    "Preview of your level exactly as you drew it.",
-                    style = MaterialTheme.typography.bodySmall
-                )
-                Spacer(Modifier.height(12.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .size(24.dp)
+                                        .border(1.dp, Color.DarkGray),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    // Base tile image or black if unknown/empty
+                                    if (baseTile != null) {
+                                        Image(
+                                            painter = painterResource(id = baseTile.resId),
+                                            contentDescription = baseTile.displayName,
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentScale = ContentScale.FillBounds
+                                        )
+                                    } else {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .background(Color.Black)
+                                        )
+                                    }
 
-                Box(
-                    modifier = Modifier
-                        .background(Color(0xFF111111))
-                        .padding(4.dp)
-                ) {
-                    Column {
-                        for (y in 0 until testLevel.height) {
-                            Row {
-                                for (x in 0 until testLevel.width) {
-                                    val id = testLevel.tileIds[y][x]
-                                    val baseTile = paletteById[id]
-
-                                    Box(
-                                        modifier = Modifier
-                                            .size(24.dp)
-                                            .border(1.dp, Color.DarkGray),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        // Base tile
-                                        if (baseTile != null) {
-                                            Image(
-                                                painter = painterResource(id = baseTile.resId),
-                                                contentDescription = baseTile.displayName,
-                                                modifier = Modifier.fillMaxSize(),
-                                                contentScale = ContentScale.FillBounds
-                                            )
-                                        } else {
-                                            Box(
-                                                modifier = Modifier
-                                                    .fillMaxSize()
-                                                    .background(Color.Black)
-                                            )
-                                        }
-
-                                        // Hero / goal
-                                        if (testLevel.startPos.first == x && testLevel.startPos.second == y) {
-                                            Image(
-                                                painter = painterResource(id = heroResId),
-                                                contentDescription = "Start",
-                                                modifier = Modifier.fillMaxSize(),
-                                                contentScale = ContentScale.Fit
-                                            )
-                                        }
-                                        if (testLevel.goalPos.first == x && testLevel.goalPos.second == y) {
-                                            Image(
-                                                painter = painterResource(id = goalResId),
-                                                contentDescription = "Goal",
-                                                modifier = Modifier.fillMaxSize(),
-                                                contentScale = ContentScale.Fit
-                                            )
-                                        }
+                                    // Start hero overlay
+                                    if (testLevel.startPos.first == x && testLevel.startPos.second == y) {
+                                        Image(
+                                            painter = painterResource(id = heroResId),
+                                            contentDescription = "Start",
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentScale = ContentScale.Fit
+                                        )
+                                    }
+                                    // Goal overlay
+                                    if (testLevel.goalPos.first == x && testLevel.goalPos.second == y) {
+                                        Image(
+                                            painter = painterResource(id = goalResId),
+                                            contentDescription = "Goal",
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentScale = ContentScale.Fit
+                                        )
                                     }
                                 }
                             }
                         }
                     }
                 }
-
-                Spacer(Modifier.height(12.dp))
-                Text(
-                    "Use this to verify your tile layout & corners.\n" +
-                            "Gameplay (commands / sliding) is still in GameScreen.",
-                    style = MaterialTheme.typography.bodySmall,
-                    textAlign = TextAlign.Center
-                )
             }
+
+            Spacer(Modifier.height(12.dp))
+            Text(
+                "Use this to verify your tile layout & corners.\n" +
+                        "Gameplay (commands / sliding) is still in GameScreen.",
+                style = MaterialTheme.typography.bodySmall,
+                textAlign = TextAlign.Center
+            )
         }
-    )
+    }
 }

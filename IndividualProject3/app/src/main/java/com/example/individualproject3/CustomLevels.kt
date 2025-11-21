@@ -2,6 +2,8 @@ package com.example.individualproject3
 
 import android.content.Context
 
+// Handles on-device storage of user-created levels and mapping them onto game slots.
+
 // One saved custom level on disk
 data class SavedCustomLevel(
     val id: String,
@@ -197,8 +199,7 @@ fun clearCustomFromGame(context: Context, gameId: String) {
 // Convert SavedCustomLevel → GameMap for gameplay
 // ----------------------
 
-
-
+// Map a tile id string from the editor to a logical type used by gameplay.
 fun logicalTypeForTileId(tileId: String): LogicalTileType =
     when (tileId) {
         // Water stays water
@@ -226,7 +227,6 @@ fun logicalTypeForTileId(tileId: String): LogicalTileType =
         else -> LogicalTileType.WALL
     }
 
-
 // Make a GameMap that GameScreen + DungeonGrid can play
 fun SavedCustomLevel.toGameMap(idOverride: String? = null): GameMap {
     val walls = mutableSetOf<Pair<Int, Int>>()
@@ -253,10 +253,11 @@ fun SavedCustomLevel.toGameMap(idOverride: String? = null): GameMap {
         goalY = goalY,
         walls = walls,
         waterTiles = water,
-        tileIds = tileIds          // 👈 NEW
+        tileIds = tileIds          // used for 1:1 visual rendering in DungeonGrid
     )
 }
 
+// Helper for baked-in defaults built from a 2D list of tile ids.
 fun gameMapFromTileIds(
     id: String,
     startX: Int,
@@ -296,7 +297,7 @@ fun gameMapFromTileIds(
     )
 }
 
-// Export a saved custom level as ready-to-paste Kotlin code
+// Export a saved custom level as ready-to-paste Kotlin code (used for "baking in" levels).
 fun exportSavedLevelAsKotlin(level: SavedCustomLevel, varName: String = "levelTiles"): String {
     val sb = StringBuilder()
     sb.append("val ").append(varName).append(" = listOf(\n")

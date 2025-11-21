@@ -1,6 +1,5 @@
 package com.example.individualproject3
 
-import androidx.compose.foundation.layout.BoxWithConstraints
 import android.content.Context
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -8,7 +7,9 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -20,9 +21,20 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import android.util.Log
 
-// ---------- Logical meaning for gameplay ----------
+/**
+ * Tile-based level editor used by the parent to design custom dungeons.
+ *
+ * Features:
+ * - Choose grid size (4x4 up to 14x14)
+ * - Paint tiles from a palette (walls, water, floor, corners)
+ * - Place start and goal positions (hero + door)
+ * - Save as custom level for later use
+ * - Export the layout as Kotlin code to "bake" into createAllLevels()
+ */
+
+// ---------- Logical meaning for gameplay (how tiles behave) ----------
+
 enum class LogicalTileType {
     EMPTY,
     FLOOR,
@@ -30,6 +42,9 @@ enum class LogicalTileType {
     WATER
 }
 
+/**
+ * Simple test container for previewing levels (used by dev tools elsewhere).
+ */
 data class EditorTestLevel(
     val width: Int,
     val height: Int,
@@ -39,6 +54,14 @@ data class EditorTestLevel(
     val difficulty: Difficulty = Difficulty.EASY
 )
 
+/**
+ * A single selectable tile in the palette.
+ *
+ * @param id          stable ID used in tileIds
+ * @param displayName short label shown in the palette
+ * @param resId       drawable resource ID
+ * @param logicalType how this tile behaves in gameplay (floor/wall/water/empty)
+ */
 data class PaletteTile(
     val id: String,
     val displayName: String,
@@ -46,7 +69,10 @@ data class PaletteTile(
     val logicalType: LogicalTileType
 )
 
-// Base tile grid only
+/**
+ * Simple definition used when saving a custom level from the editor.
+ * Stored as IDs only; gameplay collision (walls/water) is derived from palette.
+ */
 data class CustomLevelDef(
     val id: String,
     val difficulty: Difficulty,
@@ -55,7 +81,11 @@ data class CustomLevelDef(
     val tileIds: List<List<String>>
 )
 
-// Save using base tiles + explicit start/goal
+/**
+ * Save a custom level to a text file using a compact pipe-separated format.
+ * This is a legacy saver (you now primarily use SavedCustomLevel + JSON),
+ * but kept here because it’s still referenced by older code paths.
+ */
 fun saveCustomLevel(
     context: Context,
     def: CustomLevelDef,
@@ -68,12 +98,13 @@ fun saveCustomLevel(
     val walls = mutableListOf<Pair<Int, Int>>()
     val water = mutableListOf<Pair<Int, Int>>()
 
+    // Derive wall + water coordinates from logical tile type
     for (y in 0 until def.height) {
         for (x in 0 until def.width) {
             val id = def.tileIds[y][x]
             val pal = paletteById[id] ?: continue
             when (pal.logicalType) {
-                LogicalTileType.WALL -> walls += x to y
+                LogicalTileType.WALL  -> walls += x to y
                 LogicalTileType.WATER -> water += x to y
                 else -> {}
             }
@@ -88,6 +119,7 @@ fun saveCustomLevel(
     fun encodeList(list: List<Pair<Int, Int>>): String =
         list.joinToString(";") { "${it.first}:${it.second}" }
 
+    // Flatten everything into a single line
     val line = buildString {
         append(def.id).append('|')
         append(def.difficulty.name).append('|')
@@ -97,7 +129,8 @@ fun saveCustomLevel(
         append("$goalX,$goalY").append('|')
         append(encodeList(walls)).append('|')
         append(encodeList(water)).append('|')
-        // flatten tile IDs so you can reconstruct exact art later
+
+        // Flatten tile IDs so you can reconstruct visuals 1:1 later
         def.tileIds.forEachIndexed { y, row ->
             row.forEachIndexed { x, id ->
                 append(id)
@@ -111,6 +144,8 @@ fun saveCustomLevel(
     }
 }
 
+// ---------- LEVEL EDITOR UI ----------
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LevelEditorScreen(
@@ -118,14 +153,14 @@ fun LevelEditorScreen(
 ) {
     val context = LocalContext.current
 
-    // --- PALETTE: ALL your tiles here ---
+    // --- PALETTE: Every placeable tile type in the editor ---
     val palette: List<PaletteTile> = listOf(
         // Base floor and obstacles
         PaletteTile("floor", "Floor", R.drawable.floor_tile, LogicalTileType.FLOOR),
         PaletteTile("inner_wall", "Inner Wall", R.drawable.inner_wall, LogicalTileType.WALL),
         PaletteTile("water", "Water", R.drawable.water_tile, LogicalTileType.WATER),
 
-        // Sides (upper / lower)
+        // Side walls (upper / lower)
         PaletteTile("left_upper", "Left U", R.drawable.left_side_upper_wall, LogicalTileType.WALL),
         PaletteTile("left_lower", "Left L", R.drawable.left_side_lower_wall, LogicalTileType.WALL),
         PaletteTile("right_upper", "Right U", R.drawable.right_side_upper_wall, LogicalTileType.WALL),
@@ -148,13 +183,13 @@ fun LevelEditorScreen(
         PaletteTile("bl_upper", "BL U", R.drawable.bottom_left_side_upper_wall, LogicalTileType.WALL),
         PaletteTile("br_upper", "BR U", R.drawable.bottom_right_side_upper_wall, LogicalTileType.WALL),
 
-        // Outer big corners
+        // Outer big corners (for corridor-style rooms)
         PaletteTile("outer_tl", "Outer TL", R.drawable.outer_top_left_corner, LogicalTileType.WALL),
         PaletteTile("outer_tr", "Outer TR", R.drawable.outer_top_right_corner, LogicalTileType.WALL),
         PaletteTile("outer_bl", "Outer BL", R.drawable.outer_bottom_left_corner, LogicalTileType.WALL),
         PaletteTile("outer_br", "Outer BR", R.drawable.outer_bottom_right_corner, LogicalTileType.WALL),
 
-        // Inner corners
+        // Inner corners (for carving shapes inside rooms/corridors)
         PaletteTile("inner_tl", "Inner TL", R.drawable.inner_top_left_corner, LogicalTileType.WALL),
         PaletteTile("inner_tr", "Inner TR", R.drawable.inner_top_right_corner, LogicalTileType.WALL),
         PaletteTile("inner_bl", "Inner BL", R.drawable.inner_bottom_left_corner, LogicalTileType.WALL),
@@ -163,8 +198,11 @@ fun LevelEditorScreen(
 
     val paletteById = remember { palette.associateBy { it.id } }
 
+    // Sprites used for start (hero) and goal overlay
     val heroResId = R.drawable.down_sprite
     val goalResId = R.drawable.goal
+
+    // --- Editor meta state ---
 
     var levelId by remember { mutableStateOf("") }
     var difficulty by remember { mutableStateOf(Difficulty.EASY) }
@@ -174,21 +212,29 @@ fun LevelEditorScreen(
         mutableStateOf(List(10) { List(10) { "empty" } })
     }
 
-    var exportCode by remember { mutableStateOf("") }
-
     var startPos by remember { mutableStateOf<Pair<Int, Int>?>(null) }
     var goalPos by remember { mutableStateOf<Pair<Int, Int>?>(null) }
 
-    var selectedMode by remember { mutableStateOf("tile:floor") } // tile:<id>, "start", "goal", "erase"
+    // selectedMode can be:
+    //  "tile:<id>" → paint that tile
+    //  "start"     → place hero start
+    //  "goal"      → place goal
+    //  "erase"     → clear to empty
+    var selectedMode by remember { mutableStateOf("tile:floor") }
 
     var statusMessage by remember { mutableStateOf("") }
 
+    // Holds the generated Kotlin code after "Export as Kotlin"
+    var exportCode by remember { mutableStateOf("") }
+
+    // Reset grid when changing size
     fun resetGrid(newSize: Int) {
         gridSize = newSize
         tileIds = List(newSize) { List(newSize) { "empty" } }
         startPos = null
         goalPos = null
         statusMessage = ""
+        exportCode = ""
     }
 
     Scaffold(
@@ -213,7 +259,8 @@ fun LevelEditorScreen(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
 
-            // --- Meta controls ---
+            // ---------- Meta controls (ID, difficulty, grid size) ----------
+
             OutlinedTextField(
                 value = levelId,
                 onValueChange = { levelId = it },
@@ -259,7 +306,8 @@ fun LevelEditorScreen(
 
             Spacer(Modifier.height(16.dp))
 
-            // --- Tile palette ---
+            // ---------- Tile palette row ----------
+
             Text("Tile Palette", style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(8.dp))
 
@@ -273,6 +321,7 @@ fun LevelEditorScreen(
                 palette.forEach { tile ->
                     val modeId = "tile:${tile.id}"
                     val isSelected = selectedMode == modeId
+
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier
@@ -302,7 +351,8 @@ fun LevelEditorScreen(
 
             Spacer(Modifier.height(8.dp))
 
-            // --- Special modes: Start, Goal, Eraser ---
+            // ---------- Special modes: Start, Goal, Eraser ----------
+
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -367,15 +417,15 @@ fun LevelEditorScreen(
 
             Spacer(Modifier.height(8.dp))
 
-            // --- Grid ---
-            // --- Grid ---
+            // ---------- Grid: paintable tile area ----------
+
             BoxWithConstraints(
                 modifier = Modifier
-                    .fillMaxWidth()                 // use full width of screen
+                    .fillMaxWidth()
                     .background(Color(0xFF111111))
                     .padding(4.dp)
             ) {
-                // Each tile’s size is based on the available width and grid size.
+                // Scale tile size so the whole grid fits the width
                 val tileSize = maxWidth / gridSize
 
                 Column {
@@ -387,12 +437,14 @@ fun LevelEditorScreen(
 
                                 Box(
                                     modifier = Modifier
-                                        .size(tileSize)           // 👈 use dynamic size instead of 24.dp
+                                        .size(tileSize)
                                         .border(1.dp, Color.DarkGray)
                                         .clickable {
                                             when {
                                                 selectedMode == "erase" -> {
-                                                    val newRows = tileIds.map { it.toMutableList() }.toMutableList()
+                                                    val newRows = tileIds
+                                                        .map { it.toMutableList() }
+                                                        .toMutableList()
                                                     newRows[y][x] = "empty"
                                                     tileIds = newRows.map { it.toList() }
                                                 }
@@ -407,7 +459,9 @@ fun LevelEditorScreen(
 
                                                 selectedMode.startsWith("tile:") -> {
                                                     val tileId = selectedMode.removePrefix("tile:")
-                                                    val newRows = tileIds.map { it.toMutableList() }.toMutableList()
+                                                    val newRows = tileIds
+                                                        .map { it.toMutableList() }
+                                                        .toMutableList()
                                                     newRows[y][x] = tileId
                                                     tileIds = newRows.map { it.toList() }
                                                 }
@@ -415,7 +469,7 @@ fun LevelEditorScreen(
                                         },
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    // Base tile
+                                    // Base tile art
                                     if (baseTile != null) {
                                         Image(
                                             painter = painterResource(id = baseTile.resId),
@@ -431,7 +485,7 @@ fun LevelEditorScreen(
                                         )
                                     }
 
-                                    // Overlays
+                                    // Overlays: start + goal
                                     if (startPos?.first == x && startPos?.second == y) {
                                         Image(
                                             painter = painterResource(id = heroResId),
@@ -455,15 +509,15 @@ fun LevelEditorScreen(
                 }
             }
 
-
             Spacer(Modifier.height(16.dp))
 
-            // --- BUTTONS: Test (stub), Save, Export ---
+            // ---------- BUTTONS: Test (stub), Save, Export ----------
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // TEST LEVEL (stub for future)
+                // TEST LEVEL: currently just a stub (dev-only)
                 Button(
                     onClick = {
                         statusMessage = "Test Level is disabled for now (dev-only feature)."
@@ -473,7 +527,7 @@ fun LevelEditorScreen(
                     Text("Test Level")
                 }
 
-                // SAVE LEVEL
+                // SAVE LEVEL: writes a SavedCustomLevel via CustomLevels.kt utilities
                 Button(
                     onClick = {
                         if (startPos == null || goalPos == null) {
@@ -495,6 +549,7 @@ fun LevelEditorScreen(
 
                             saveCustomLevelToFile(context, saved)
                             statusMessage = "Saved level \"$safeId\""
+                            exportCode = ""
                         }
                     },
                     modifier = Modifier.weight(1f)
@@ -505,6 +560,7 @@ fun LevelEditorScreen(
 
             Spacer(Modifier.height(8.dp))
 
+            // EXPORT: take a saved custom level and convert it into Kotlin
             Button(
                 onClick = {
                     val targetId = levelId.ifBlank { "custom_level_1" }
@@ -514,8 +570,9 @@ fun LevelEditorScreen(
 
                     if (saved != null) {
                         val code = exportSavedLevelAsKotlin(saved, varName = "easy1Tiles")
-                        exportCode = code  // 👈 store it in UI state
-                        statusMessage = "Exported code for \"$targetId\". Scroll down to copy it."
+                        exportCode = code
+                        statusMessage =
+                            "Exported code for \"$targetId\". Scroll down to copy it."
                     } else {
                         statusMessage = "No saved custom level with id \"$targetId\""
                         exportCode = ""
@@ -528,6 +585,7 @@ fun LevelEditorScreen(
 
             Spacer(Modifier.height(8.dp))
 
+            // Status banner (errors / success messages)
             if (statusMessage.isNotEmpty()) {
                 Text(
                     text = statusMessage,
@@ -539,6 +597,7 @@ fun LevelEditorScreen(
                 )
             }
 
+            // Show exported Kotlin block if present
             if (exportCode.isNotEmpty()) {
                 Spacer(Modifier.height(8.dp))
                 Text(
@@ -555,7 +614,7 @@ fun LevelEditorScreen(
                         .verticalScroll(rememberScrollState())
                         .padding(8.dp)
                 ) {
-                    androidx.compose.foundation.text.selection.SelectionContainer {
+                    SelectionContainer {
                         Text(
                             text = exportCode,
                             color = Color.White,
@@ -564,6 +623,6 @@ fun LevelEditorScreen(
                     }
                 }
             }
-        } // end Column
-    } // end Scaffold content
-} // end LevelEditorScreen
+        }
+    }
+}

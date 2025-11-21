@@ -1,59 +1,80 @@
 @file:OptIn(ExperimentalFoundationApi::class)
 package com.example.individualproject3
 
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import android.content.ClipData
 import android.content.ClipDescription
+import android.content.Context
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.draganddrop.dragAndDropSource
 import androidx.compose.foundation.draganddrop.dragAndDropTarget
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Divider
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.runtime.*
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import androidx.compose.foundation.Image
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.res.painterResource
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.draganddrop.DragAndDropTarget
 import androidx.compose.ui.draganddrop.DragAndDropTransferData
 import androidx.compose.ui.draganddrop.mimeTypes
-import androidx.compose.runtime.LaunchedEffect
-import android.content.Context
 import androidx.compose.ui.draganddrop.toAndroidDragEvent
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.Dp
-import androidx.compose.material3.*
-import androidx.compose.runtime.rememberCoroutineScope
-import android.os.Bundle
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import com.example.individualproject3.ui.theme.DungeonTheme
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**notes:
  * got the fail sound filr here:
@@ -90,6 +111,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         setContent {
+            //sets the custom made "dungeon theme"
             DungeonTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
@@ -102,8 +124,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-
-// All the screens in your app
+// All the screens in my app
 enum class Screen {
     PARENT_LOGIN,
     PARENT_HOME,
@@ -115,17 +136,12 @@ enum class Screen {
 }
 
 
-data class Account(
-    val username: String,
-    val password: String,
-    val isParent: Boolean,
-    val parentUsername: String? = null   // only used for kid accounts
-)
 
 // ---------- MAIN APP ROOT ----------
 
 @Composable
 fun KodableApp() {
+
     val context = LocalContext.current
 
     // -------------------------
@@ -145,17 +161,14 @@ fun KodableApp() {
         mutableStateOf<ChildAccount?>(null)
     }
 
-
-
-    // You can actually delete Account/currentKidName if you want,
-    // but I'll keep them and just make currentKidName actually used.
-    val accounts = remember { mutableStateListOf<Account>() }
     var currentKidName by remember { mutableStateOf<String?>(null) }
 
     // -------------------------
     // GAME STATE
     // -------------------------
+
     var selectedLevel by remember { mutableStateOf<Level?>(null) }
+
     var selectedGameMap by remember { mutableStateOf<GameMap?>(null) }
 
     // All levels (easy + hard)
@@ -180,6 +193,8 @@ fun KodableApp() {
             )
         }
 
+        //the parent home screen, this is where the main UI is
+        //goes to all other screens
         Screen.PARENT_HOME -> {
             ParentHomeScreen(
                 parent = parentAccount!!,
@@ -191,7 +206,7 @@ fun KodableApp() {
                 },
                 onSelectChild = { child ->
                     currentChild = child
-                    currentKidName = child.name      // 🔹 IMPORTANT: set kid name here
+                    currentKidName = child.name
                 },
                 onPlayAsChild = {
                     if (currentChild != null) {
@@ -222,6 +237,7 @@ fun KodableApp() {
             )
         }
 
+        //Select levels
         Screen.LEVEL_SELECT -> {
             LevelSelectScreen(
                 levels = allLevels,
@@ -235,6 +251,7 @@ fun KodableApp() {
         }
 
 
+        //go to the game screen for the level
         Screen.GAME -> {
             GameScreen(
                 level = selectedLevel!!,
@@ -244,14 +261,14 @@ fun KodableApp() {
             )
         }
 
-        // 6) LEVEL EDITOR SCREEN
+        //takes you to the level editor screen
         Screen.LEVEL_EDITOR -> {
             LevelEditorScreen(
                 onBack = { currentScreen = Screen.PARENT_HOME }
             )
         }
 
-        // 🔹 Parent stats screen now gets the children list
+        //takes you to the stats screen to show childs progress
         Screen.PARENT_STATS -> {
             ParentStatsScreen(
                 children = children,
@@ -261,12 +278,7 @@ fun KodableApp() {
     }
 }
 
-
-
-
-
-
-// ---------- MAIN MENU SCREEN (per-child) ----------
+// ---------- MAIN MENU SCREEN ----------
 @Composable
 fun MainMenuScreen(
     currentChild: ChildAccount,
@@ -324,11 +336,9 @@ fun ParentLoginScreen(
     val context = LocalContext.current
 
     var registrationMode by remember { mutableStateOf(existingParent == null) }
-
     var name by remember { mutableStateOf("") }
     var pin by remember { mutableStateOf("") }
     var status by remember { mutableStateOf("") }
-
     val hasExistingParent = existingParent != null
 
     Scaffold(
@@ -899,200 +909,6 @@ fun PlayCustomLevelDialog(
     )
 }
 
-
-
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun LoginScreen(
-    isParent: Boolean,
-    accounts: MutableList<Account>,
-    onBack: () -> Unit,
-    onLoggedIn: (String) -> Unit
-) {
-    var username by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var errorMessage by remember { mutableStateOf("") }
-    var isRegisterMode by remember { mutableStateOf(false) }
-    // For kid registration: which parent owns this kid?
-    var selectedParent by remember { mutableStateOf<String?>(null) }
-    var parentDropdownExpanded by remember { mutableStateOf(false) }
-
-
-    val title = if (isParent) "Parent Login" else "Kid Login"
-
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(title) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Text("<")
-                    }
-                }
-            )
-        }
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.Top,
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(
-                text = if (isRegisterMode) "Register New ${if (isParent) "Parent" else "Kid"}" else "Log In",
-                style = MaterialTheme.typography.titleMedium
-            )
-
-            Spacer(Modifier.height(16.dp))
-
-            OutlinedTextField(
-                value = username,
-                onValueChange = {
-                    username = it
-                    errorMessage = ""
-                },
-                label = { Text("Username") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            Spacer(Modifier.height(12.dp))
-
-            OutlinedTextField(
-                value = password,
-                onValueChange = {
-                    password = it
-                    errorMessage = ""
-                },
-                label = { Text("Password") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            Spacer(Modifier.height(12.dp))
-
-            // If we're registering a KID, show parent selection
-            if (!isParent && isRegisterMode) {
-                Text("Select Parent Account:", style = MaterialTheme.typography.bodyMedium)
-                Spacer(Modifier.height(4.dp))
-
-                Box {
-                    Button(onClick = { parentDropdownExpanded = true }) {
-                        Text(selectedParent ?: "Choose Parent")
-                    }
-
-                    DropdownMenu(
-                        expanded = parentDropdownExpanded,
-                        onDismissRequest = { parentDropdownExpanded = false }
-                    ) {
-                        val parentAccounts = accounts.filter { it.isParent }
-                        if (parentAccounts.isEmpty()) {
-                            DropdownMenuItem(
-                                text = { Text("No parent accounts yet") },
-                                onClick = { parentDropdownExpanded = false }
-                            )
-                        } else {
-                            parentAccounts.forEach { parentAcc ->
-                                DropdownMenuItem(
-                                    text = { Text(parentAcc.username) },
-                                    onClick = {
-                                        selectedParent = parentAcc.username
-                                        parentDropdownExpanded = false
-                                    }
-                                )
-                            }
-                        }
-                    }
-                }
-
-                Spacer(Modifier.height(12.dp))
-            }
-
-            if (errorMessage.isNotEmpty()) {
-                Text(
-                    text = errorMessage,
-                    color = Color.Red,
-                    style = MaterialTheme.typography.bodySmall
-                )
-                Spacer(Modifier.height(8.dp))
-            }
-
-            Button(
-                onClick = {
-                    if (username.isBlank() || password.isBlank()) {
-                        errorMessage = "Please enter both username and password."
-                        return@Button
-                    }
-
-                    if (isRegisterMode) {
-                        if (isParent) {
-                            // PARENT REGISTRATION
-                            accounts.add(
-                                Account(
-                                    username = username,
-                                    password = password,
-                                    isParent = true
-                                )
-                            )
-                            onLoggedIn(username)
-                        } else {
-                            // KID REGISTRATION → MUST CHOOSE A PARENT
-                            if (selectedParent == null) {
-                                errorMessage = "Please choose a parent account."
-                                return@Button
-                            }
-
-                            accounts.add(
-                                Account(
-                                    username = username,
-                                    password = password,
-                                    isParent = false,
-                                    parentUsername = selectedParent!!
-                                )
-                            )
-                            onLoggedIn(username)
-                        }
-                    } else {
-                        // LOGIN
-                        val account = accounts.find {
-                            it.username == username && it.isParent == isParent
-                        }
-                        if (account == null) {
-                            errorMessage = "Account not found. Try registering."
-                        } else if (account.password != password) {
-                            errorMessage = "Incorrect password."
-                        } else {
-                            onLoggedIn(username)
-                        }
-                    }
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(if (isRegisterMode) "Register" else "Log In")
-            }
-
-            Spacer(Modifier.height(8.dp))
-
-            TextButton(
-                onClick = {
-                    isRegisterMode = !isRegisterMode
-                    errorMessage = ""
-                }
-            ) {
-                Text(
-                    if (isRegisterMode)
-                        "Already have an account? Log in"
-                    else
-                        "New here? Register"
-                )
-            }
-        }
-    }
-}
-
 // Two-tile-thick outer wall around the map
 fun isUpperWallRing(x: Int, y: Int, map: GameMap): Boolean {
     val maxX = map.width - 1
@@ -1365,210 +1181,6 @@ fun commandLabel(cmd: Command): String =
         Command.MOVE_LEFT -> "←"
         Command.MOVE_RIGHT -> "→"
     }
-
-fun stepPosition(
-    currentPos: Pair<Int, Int>,
-    cmd: Command
-): Pair<Int, Int> {
-    val (x, y) = currentPos
-    return when (cmd) {
-        Command.MOVE_UP -> x to (y - 1)
-        Command.MOVE_DOWN -> x to (y + 1)
-        Command.MOVE_LEFT -> (x - 1) to y
-        Command.MOVE_RIGHT -> (x + 1) to y
-    }
-}
-
-@Composable
-fun chooseWallSprite(
-    x: Int,
-    y: Int,
-    map: GameMap,
-    horizontal: Painter,
-    vertical: Painter,
-    corner: Painter
-): Painter {
-
-    val maxX = map.width - 1
-    val maxY = map.height - 1
-
-    return when {
-        // Corners
-        x == 0 && y == 0 -> corner           // top-left
-        x == maxX && y == 0 -> corner        // top-right
-        x == 0 && y == maxY -> corner        // bottom-left
-        x == maxX && y == maxY -> corner     // bottom-right
-
-        // Top or bottom row → horizontal wall
-        y == 0 || y == maxY -> horizontal
-
-        // Left or right column → vertical wall
-        x == 0 || x == maxX -> vertical
-
-        // Otherwise fall back to your map-defined interior walls
-        else -> horizontal
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun ParentDashboardScreen(
-    kidNames: List<String>,
-    onBack: () -> Unit
-) {
-    val context = LocalContext.current
-
-    // All log entries from file
-    var allEntries by remember { mutableStateOf<List<ProgressEntry>>(emptyList()) }
-
-    // Which child is selected (null = all children of this parent)
-    var selectedKid by remember { mutableStateOf<String?>(null) }
-
-    val scrollState = rememberScrollState()
-
-    // Load stats once when screen opens
-    LaunchedEffect(Unit) {
-        allEntries = readProgressEntries(context)
-    }
-
-    // Only consider entries for this parent's children
-    val kidSet = kidNames.toSet()
-    val entriesForThisParent = allEntries.filter { entry ->
-        entry.childName.isNotBlank() && entry.childName in kidSet
-    }
-
-    // Then filter by selected child (if any)
-    val filteredEntries = if (selectedKid == null) {
-        entriesForThisParent
-    } else {
-        entriesForThisParent.filter { it.childName == selectedKid }
-    }
-
-    val totalAttempts = filteredEntries.size
-
-    // Group by result code
-    val counts = filteredEntries.groupingBy { it.resultCode }.eachCount()
-    val codesInOrder = listOf("SUCCESS", "HIT_WALL", "OUT_OF_BOUNDS", "NO_GOAL", "UNKNOWN")
-
-    val resultStats: List<ResultStat> = codesInOrder.map { code ->
-        val count = counts[code] ?: 0
-        ResultStat(
-            code = code,
-            label = when (code) {
-                "SUCCESS" -> "Success"
-                "HIT_WALL" -> "Hit Wall"
-                "OUT_OF_BOUNDS" -> "Out of Bounds"
-                "NO_GOAL" -> "Finished w/o Goal"
-                else -> "Other / Unknown"
-            },
-            count = count
-        )
-    }
-
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Parent Dashboard") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Text("<")
-                    }
-                }
-            )
-        }
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .verticalScroll(scrollState)
-                .padding(16.dp),
-            horizontalAlignment = Alignment.Start
-        ) {
-            Text(
-                text = "Child Progress Summary",
-                style = MaterialTheme.typography.headlineSmall
-            )
-
-            Spacer(Modifier.height(8.dp))
-
-            // 🔹 Child selector
-            if (kidNames.isNotEmpty()) {
-                Text("Filter by child:", style = MaterialTheme.typography.bodyMedium)
-                Spacer(Modifier.height(4.dp))
-
-                var dropdownExpanded by remember { mutableStateOf(false) }
-
-                Box {
-                    Button(onClick = { dropdownExpanded = true }) {
-                        Text(selectedKid ?: "All Children")
-                    }
-
-                    DropdownMenu(
-                        expanded = dropdownExpanded,
-                        onDismissRequest = { dropdownExpanded = false }
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text("All Children") },
-                            onClick = {
-                                selectedKid = null
-                                dropdownExpanded = false
-                            }
-                        )
-                        kidNames.forEach { name ->
-                            DropdownMenuItem(
-                                text = { Text(name) },
-                                onClick = {
-                                    selectedKid = name
-                                    dropdownExpanded = false
-                                }
-                            )
-                        }
-                    }
-                }
-
-                Spacer(Modifier.height(16.dp))
-            } else {
-                Text("No kid accounts found for this parent.")
-                Spacer(Modifier.height(16.dp))
-            }
-
-            if (totalAttempts == 0) {
-                Text("No attempts logged yet for this selection.")
-            } else {
-                Text("Total Attempts: $totalAttempts")
-                Spacer(Modifier.height(16.dp))
-
-                Text(
-                    text = "Attempts by Outcome:",
-                    style = MaterialTheme.typography.titleMedium
-                )
-                Spacer(Modifier.height(8.dp))
-
-                val maxCount = resultStats.maxOfOrNull { it.count } ?: 0
-
-                resultStats.forEach { stat ->
-                    if (stat.count > 0) {
-                        ResultBarRow(
-                            label = stat.label,
-                            count = stat.count,
-                            maxCount = maxCount
-                        )
-                        Spacer(Modifier.height(8.dp))
-                    }
-                }
-            }
-
-            Spacer(Modifier.height(24.dp))
-
-            Text(
-                text = "Note: These stats are based on runs performed while logged in as each child.",
-                style = MaterialTheme.typography.bodySmall
-            )
-        }
-    }
-}
-
 
 @Composable
 fun ResultBarRow(
@@ -2241,7 +1853,7 @@ fun GameScreen(
                                 if (showResultDialog) break
                             }
 
-// After the for-loop over commands:
+                            // After the for-loop over commands:
                             if (!showResultDialog) {
                                 // All commands ran, no water, no out-of-bounds, no goal
                                 statusMessage = "Program finished, but Link did not reach the goal."
@@ -2498,21 +2110,3 @@ fun ParentStatsScreen(
         }
     }
 }
-
-// Helper classes for stats
-data class LevelStat(
-    val levelId: String,
-    val gameId: String,
-    val total: Int,
-    val success: Int
-)
-
-private data class LevelStatMutable(
-    val levelId: String,
-    val gameId: String,
-    var total: Int = 0,
-    var success: Int = 0
-) {
-    fun toImmutable() = LevelStat(levelId, gameId, total, success)
-}
-
