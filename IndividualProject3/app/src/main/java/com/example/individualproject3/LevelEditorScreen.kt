@@ -1,5 +1,6 @@
 package com.example.individualproject3
 
+import androidx.compose.foundation.layout.BoxWithConstraints
 import android.content.Context
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -367,11 +368,16 @@ fun LevelEditorScreen(
             Spacer(Modifier.height(8.dp))
 
             // --- Grid ---
-            Box(
+            // --- Grid ---
+            BoxWithConstraints(
                 modifier = Modifier
+                    .fillMaxWidth()                 // use full width of screen
                     .background(Color(0xFF111111))
                     .padding(4.dp)
             ) {
+                // Each tile’s size is based on the available width and grid size.
+                val tileSize = maxWidth / gridSize
+
                 Column {
                     for (y in 0 until gridSize) {
                         Row {
@@ -381,14 +387,12 @@ fun LevelEditorScreen(
 
                                 Box(
                                     modifier = Modifier
-                                        .size(24.dp)
+                                        .size(tileSize)           // 👈 use dynamic size instead of 24.dp
                                         .border(1.dp, Color.DarkGray)
                                         .clickable {
                                             when {
                                                 selectedMode == "erase" -> {
-                                                    val newRows =
-                                                        tileIds.map { it.toMutableList() }
-                                                            .toMutableList()
+                                                    val newRows = tileIds.map { it.toMutableList() }.toMutableList()
                                                     newRows[y][x] = "empty"
                                                     tileIds = newRows.map { it.toList() }
                                                 }
@@ -402,11 +406,8 @@ fun LevelEditorScreen(
                                                 }
 
                                                 selectedMode.startsWith("tile:") -> {
-                                                    val tileId =
-                                                        selectedMode.removePrefix("tile:")
-                                                    val newRows =
-                                                        tileIds.map { it.toMutableList() }
-                                                            .toMutableList()
+                                                    val tileId = selectedMode.removePrefix("tile:")
+                                                    val newRows = tileIds.map { it.toMutableList() }.toMutableList()
                                                     newRows[y][x] = tileId
                                                     tileIds = newRows.map { it.toList() }
                                                 }
@@ -453,6 +454,7 @@ fun LevelEditorScreen(
                     }
                 }
             }
+
 
             Spacer(Modifier.height(16.dp))
 

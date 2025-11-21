@@ -33,6 +33,26 @@ private val LightColorScheme = lightColorScheme(
     */
 )
 
+private val DungeonDarkColorScheme = darkColorScheme(
+    primary = androidx.compose.ui.graphics.Color(0xFF8BC34A),
+    secondary = androidx.compose.ui.graphics.Color(0xFFFFC107),
+    onPrimary = androidx.compose.ui.graphics.Color.Black,
+    background = androidx.compose.ui.graphics.Color(0xFF0B0F12),   // dungeon dark
+    surface = androidx.compose.ui.graphics.Color(0xFF11161A),
+    onBackground = androidx.compose.ui.graphics.Color(0xFFE0E0E0),
+    onSurface = androidx.compose.ui.graphics.Color(0xFFE0E0E0),
+)
+
+@Composable
+fun DungeonTheme(content: @Composable () -> Unit) {
+    MaterialTheme(
+        colorScheme = DungeonDarkColorScheme,
+        typography = MaterialTheme.typography,
+        shapes = MaterialTheme.shapes,
+        content = content
+    )
+}
+
 @Composable
 fun IndividualProject3Theme(
     darkTheme: Boolean = isSystemInDarkTheme(),

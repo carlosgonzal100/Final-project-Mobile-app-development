@@ -46,12 +46,14 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.Painter
+import com.example.individualproject3.ui.theme.DungeonTheme
 
 /**notes:
  * got the fail sound filr here:
@@ -75,14 +77,23 @@ import androidx.compose.ui.graphics.painter.Painter
 // TODO: Added small change so Git can detect modifications
 
 
+// Simple dungeon color palette
+val DungeonBg       = Color(0xFF050B10)
+val DungeonPanel    = Color(0xFF111820)
+val DungeonBorder   = Color(0xFF243447)
+val DungeonAccent   = Color(0xFF4CAF50)
+val DungeonTextMain = Color(0xFFE0E6ED)
+val DungeonTextSub  = Color(0xFF9BA8B5)
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         setContent {
-            MaterialTheme {
+            DungeonTheme {
                 Surface(
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background   // use dark theme BG
                 ) {
                     KodableApp()
                 }
@@ -90,6 +101,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
+
 
 // All the screens in your app
 enum class Screen {
@@ -311,7 +323,6 @@ fun ParentLoginScreen(
 ) {
     val context = LocalContext.current
 
-    // if existing parent -> default login mode; else registration
     var registrationMode by remember { mutableStateOf(existingParent == null) }
 
     var name by remember { mutableStateOf("") }
@@ -321,9 +332,14 @@ fun ParentLoginScreen(
     val hasExistingParent = existingParent != null
 
     Scaffold(
+        containerColor = DungeonBg,
         topBar = {
             TopAppBar(
-                title = { Text("Parent Login") }
+                title = { Text("Parent Gate", color = DungeonTextMain) },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = DungeonPanel,
+                    titleContentColor = DungeonTextMain
+                )
             )
         }
     ) { padding ->
@@ -331,131 +347,119 @@ fun ParentLoginScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .background(DungeonBg)
                 .padding(16.dp),
             verticalArrangement = Arrangement.Top,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
 
-            if (registrationMode) {
-                Text(
-                    text = "Create Parent Account",
-                    style = MaterialTheme.typography.titleMedium
-                )
-                Spacer(Modifier.height(16.dp))
-
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text("Your Name") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Spacer(Modifier.height(8.dp))
-
-                OutlinedTextField(
-                    value = pin,
-                    onValueChange = { value ->
-                        pin = value.filter { it.isDigit() }.take(6)
-                        status = ""
-                    },
-                    label = { Text("PIN (numbers)") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                Spacer(Modifier.height(16.dp))
-
-                Button(
-                    onClick = {
-                        if (name.isBlank() || pin.length < 3) {
-                            status = "Enter a name and a PIN (at least 3 digits)."
-                        } else {
-                            val parent = ParentAccount(
-                                id = "parent_1",
-                                name = name.trim(),
-                                pin = pin
-                            )
-                            saveParentAccount(context, parent)
-                            status = ""
-                            onParentCreatedOrLoggedIn(parent)
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth()
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = DungeonPanel,
+                shape = RoundedCornerShape(16.dp),
+                tonalElevation = 4.dp,
+                shadowElevation = 8.dp
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Text("Create Account")
-                }
 
-                if (hasExistingParent) {
-                    Spacer(Modifier.height(8.dp))
                     Text(
-                        "This will overwrite the existing parent and children.",
-                        color = Color.Red,
-                        style = MaterialTheme.typography.bodySmall
+                        text = if (registrationMode) "Create Parent Account" else "Enter Dungeon PIN",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = DungeonTextMain
                     )
-                }
-            } else {
-                // LOGIN MODE
-                Text(
-                    text = "Welcome, ${existingParent!!.name}",
-                    style = MaterialTheme.typography.titleMedium
-                )
-                Spacer(Modifier.height(16.dp))
+                    Spacer(Modifier.height(16.dp))
 
-                OutlinedTextField(
-                    value = pin,
-                    onValueChange = { value ->
-                        pin = value.filter { it.isDigit() }.take(6)
-                        status = ""
-                    },
-                    label = { Text("PIN") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                Spacer(Modifier.height(16.dp))
-
-                Button(
-                    onClick = {
-                        val p = existingParent
-                        if (p != null && pin == p.pin) {
-                            status = ""
-                            onParentCreatedOrLoggedIn(p)
-                        } else {
-                            status = "Incorrect PIN."
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Login")
-                }
-
-                Spacer(Modifier.height(8.dp))
-
-                TextButton(
-                    onClick = {
-                        // delete old parent, children, and stats from internal storage
-                        context.deleteFile("parent_account.json")
-                        context.deleteFile("children.json")
-                        context.deleteFile("progress_log.csv")   // 🔹 reset stats too, if you want
-
-                        registrationMode = true
-                        status = "Old parent removed. Create a new parent account."
-                        name = ""
-                        pin = ""
+                    if (registrationMode) {
+                        OutlinedTextField(
+                            value = name,
+                            onValueChange = { name = it },
+                            label = { Text("Your Name") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(Modifier.height(8.dp))
                     }
-                ) {
-                    Text("Register New Parent (Reset)")
+
+                    OutlinedTextField(
+                        value = pin,
+                        onValueChange = { value ->
+                            pin = value.filter { it.isDigit() }.take(6)
+                            status = ""
+                        },
+                        label = { Text("PIN (numbers)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(Modifier.height(16.dp))
+
+                    Button(
+                        onClick = {
+                            if (registrationMode) {
+                                if (name.isBlank() || pin.length < 3) {
+                                    status = "Enter a name and a PIN (at least 3 digits)."
+                                } else {
+                                    val parent = ParentAccount(
+                                        id = "parent_1",
+                                        name = name.trim(),
+                                        pin = pin
+                                    )
+                                    saveParentAccount(context, parent)
+                                    status = ""
+                                    onParentCreatedOrLoggedIn(parent)
+                                }
+                            } else {
+                                val p = existingParent
+                                if (p != null && pin == p.pin) {
+                                    status = ""
+                                    onParentCreatedOrLoggedIn(p)
+                                } else {
+                                    status = "Incorrect PIN."
+                                }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = DungeonAccent,
+                            contentColor = Color.Black
+                        )
+                    ) {
+                        Text(if (registrationMode) "Create Account" else "Enter Dungeon")
+                    }
+
+                    if (!registrationMode && hasExistingParent) {
+                        Spacer(Modifier.height(8.dp))
+                        TextButton(
+                            onClick = {
+                                context.deleteFile("parent_account.json")
+                                context.deleteFile("children.json")
+                                context.deleteFile("progress_log.csv")
+                                registrationMode = true
+                                status = "Old parent removed. Create a new parent account."
+                                name = ""
+                                pin = ""
+                            }
+                        ) {
+                            Text(
+                                "Register New Parent (Reset)",
+                                color = Color(0xFFFF8080)
+                            )
+                        }
+                    }
+
+                    if (status.isNotEmpty()) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(text = status, color = Color(0xFFFF8080))
+                    }
                 }
-
-            }
-
-            if (status.isNotEmpty()) {
-                Spacer(Modifier.height(8.dp))
-                Text(text = status, color = Color.Red)
             }
         }
     }
 }
+
 
 
 // ---------- PARENT HOME SCREEN ----------
@@ -477,12 +481,17 @@ fun ParentHomeScreen(
     var status by remember { mutableStateOf("") }
 
     Scaffold(
+        containerColor = DungeonBg,
         topBar = {
             TopAppBar(
-                title = { Text("Parent Home") },
+                title = { Text("Dungeon Control", color = DungeonTextMain) },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = DungeonPanel,
+                    titleContentColor = DungeonTextMain
+                ),
                 actions = {
                     TextButton(onClick = onLogout) {
-                        Text("Logout")
+                        Text("Logout", color = DungeonAccent)
                     }
                 }
             )
@@ -492,59 +501,82 @@ fun ParentHomeScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .background(DungeonBg)
                 .padding(16.dp),
             horizontalAlignment = Alignment.Start
         ) {
-            Text("Logged in as: ${parent.name}", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Warden: ${parent.name}",
+                style = MaterialTheme.typography.titleMedium,
+                color = DungeonTextMain
+            )
             Spacer(Modifier.height(8.dp))
 
-            Text("Children:", style = MaterialTheme.typography.titleSmall)
-            Spacer(Modifier.height(4.dp))
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = DungeonPanel,
+                shape = RoundedCornerShape(16.dp),
+                tonalElevation = 4.dp
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp)
+                ) {
+                    Text("Adventurers:", color = DungeonTextSub)
+                    Spacer(Modifier.height(4.dp))
 
-            if (children.isEmpty()) {
-                Text("No children registered yet.")
-            } else {
-                children.forEach { child ->
-                    val isActive = currentChild?.id == child.id
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp)
-                            .clickable { onSelectChild(child) },
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = child.name + if (isActive) " (Active)" else "",
-                            modifier = Modifier.weight(1f)
-                        )
-                        TextButton(
-                            onClick = {
-                                val updated = children.filter { it.id != child.id }
-                                onChildrenChanged(updated)
+                    if (children.isEmpty()) {
+                        Text("No children registered yet.", color = DungeonTextSub)
+                    } else {
+                        children.forEach { child ->
+                            val isActive = currentChild?.id == child.id
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp)
+                                    .clickable { onSelectChild(child) },
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = child.name + if (isActive) " (Active)" else "",
+                                    modifier = Modifier.weight(1f),
+                                    color = DungeonTextMain
+                                )
+                                TextButton(
+                                    onClick = {
+                                        val updated = children.filter { it.id != child.id }
+                                        onChildrenChanged(updated)
+                                    }
+                                ) {
+                                    Text("Remove", color = Color(0xFFFF8080))
+                                }
                             }
-                        ) {
-                            Text("Remove")
                         }
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+
+                    Button(
+                        onClick = { showAddDialog = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = DungeonAccent,
+                            contentColor = Color.Black
+                        )
+                    ) {
+                        Text("Register New Child")
                     }
                 }
             }
 
-            Spacer(Modifier.height(8.dp))
-
-            Button(
-                onClick = { showAddDialog = true },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Register New Child")
-            }
-
             Spacer(Modifier.height(16.dp))
 
-            Text("Current active child: ${currentChild?.name ?: "None"}")
+            Text(
+                "Active adventurer: ${currentChild?.name ?: "None"}",
+                color = DungeonTextMain
+            )
 
             Spacer(Modifier.height(8.dp))
 
-            // 🔹 3) Rename this button "Play Game"
             Button(
                 onClick = {
                     if (currentChild == null) {
@@ -554,7 +586,11 @@ fun ParentHomeScreen(
                         onPlayAsChild()
                     }
                 },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = DungeonAccent,
+                    contentColor = Color.Black
+                )
             ) {
                 Text("Play Game")
             }
@@ -563,24 +599,31 @@ fun ParentHomeScreen(
 
             Button(
                 onClick = onOpenEditor,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = DungeonPanel,
+                    contentColor = DungeonTextMain
+                )
             ) {
                 Text("Open Level Editor")
             }
 
             Spacer(Modifier.height(8.dp))
 
-            // 🔹 New: View Stats button
             Button(
                 onClick = onViewStats,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = DungeonPanel,
+                    contentColor = DungeonTextMain
+                )
             ) {
                 Text("View Stats")
             }
 
             if (status.isNotEmpty()) {
                 Spacer(Modifier.height(8.dp))
-                Text(status, color = Color.Red)
+                Text(status, color = Color(0xFFFF8080))
             }
         }
 
@@ -602,7 +645,6 @@ fun ParentHomeScreen(
         }
     }
 }
-
 
 // ---------- DIALOG TO ADD CHILD ----------
 
@@ -681,11 +723,9 @@ fun LevelSelectScreen(
 ) {
     val context = LocalContext.current
 
-    // All saved custom levels
     var customLevels by remember { mutableStateOf<List<SavedCustomLevel>>(emptyList()) }
     var showCustomDialog by remember { mutableStateOf(false) }
 
-    // Load custom levels when we enter this screen
     LaunchedEffect(Unit) {
         customLevels = loadCustomLevels(context)
     }
@@ -693,14 +733,19 @@ fun LevelSelectScreen(
     val scrollState = rememberScrollState()
 
     Scaffold(
+        containerColor = DungeonBg,
         topBar = {
             TopAppBar(
-                title = { Text("Select Game") },
+                title = { Text("Select Dungeon", color = DungeonTextMain) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Text("<")
+                        Text("<", color = DungeonTextMain)
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = DungeonPanel,
+                    titleContentColor = DungeonTextMain
+                )
             )
         }
     ) { padding ->
@@ -708,54 +753,62 @@ fun LevelSelectScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .background(DungeonBg)
                 .padding(16.dp)
-                .verticalScroll(scrollState)   // 🔹 now scrollable
+                .verticalScroll(scrollState)
         ) {
-            // ---- Built-in levels & games ----
             levels.forEach { level ->
                 Text(
                     "${level.name} (${level.difficulty})",
-                    style = MaterialTheme.typography.titleMedium
+                    style = MaterialTheme.typography.titleMedium,
+                    color = DungeonTextMain
                 )
                 Spacer(Modifier.height(8.dp))
 
                 level.games.forEach { game ->
                     Button(
                         onClick = { onSelectGame(level, game) },
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = DungeonPanel,
+                            contentColor = DungeonTextMain
+                        )
                     ) {
-                        Text("Play game: ${game.id}")
+                        Text("Play: ${game.id}")
                     }
-                    Spacer(Modifier.height(12.dp))
+                    Spacer(Modifier.height(8.dp))
                 }
 
                 Spacer(Modifier.height(16.dp))
             }
 
-            Spacer(Modifier.height(24.dp))
-            Divider()
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(8.dp))
+            Divider(color = DungeonBorder)
+            Spacer(Modifier.height(8.dp))
 
-            // ---- Custom levels section (single button) ----
-            Text("Custom Levels", style = MaterialTheme.typography.titleMedium)
+            Text("Custom Levels", style = MaterialTheme.typography.titleMedium, color = DungeonTextMain)
             Spacer(Modifier.height(8.dp))
 
             if (customLevels.isEmpty()) {
                 Text(
-                    "No custom levels saved yet.\nUse the Level Editor to create one.",
-                    style = MaterialTheme.typography.bodySmall
+                    "No custom levels saved yet.\nUse the Level Editor to forge your own dungeon.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = DungeonTextSub
                 )
             } else {
                 Button(
                     onClick = { showCustomDialog = true },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = DungeonAccent,
+                        contentColor = Color.Black
+                    )
                 ) {
                     Text("Play Custom Level")
                 }
             }
         }
 
-        // Dialog to choose which custom level to play
         if (showCustomDialog) {
             PlayCustomLevelDialog(
                 customLevels = customLevels,
@@ -775,6 +828,7 @@ fun LevelSelectScreen(
         }
     }
 }
+
 
 
 @Composable
@@ -1728,11 +1782,11 @@ fun createAllLevels(): List<Level> {
         listOf("left_upper", "tl_lower", "top_lower", "top_lower", "top_lower", "top_lower", "top_lower", "top_lower", "top_lower", "top_lower", "top_lower", "top_lower", "tr_lower", "right_upper"),
         listOf("left_upper", "left_lower", "water", "inner_wall", "water", "water", "water", "water", "water", "water", "water", "water", "right_lower", "right_upper"),
         listOf("left_upper", "left_lower", "floor", "floor", "floor", "floor", "floor", "floor", "floor", "floor", "floor", "inner_wall", "right_lower", "right_upper"),
-        listOf("left_upper", "left_lower", "floor", "floor", "floor", "inner_wall", "floor", "inner_wall", "floor", "floor", "floor", "water", "right_lower", "right_upper"),
+        listOf("left_upper", "left_lower", "floor", "floor", "floor", "inner_wall", "floor", "floor", "floor", "floor", "floor", "water", "right_lower", "right_upper"),
         listOf("left_upper", "left_lower", "floor", "floor", "floor", "inner_wall", "floor", "floor", "floor", "floor", "floor", "water", "right_lower", "right_upper"),
         listOf("left_upper", "left_lower", "floor", "floor", "floor", "floor", "floor", "floor", "floor", "floor", "floor", "water", "right_lower", "right_upper"),
         listOf("left_upper", "left_lower", "inner_wall", "floor", "floor", "inner_wall", "floor", "floor", "floor", "inner_wall", "floor", "water", "right_lower", "right_upper"),
-        listOf("left_upper", "left_lower", "inner_wall", "floor", "floor", "floor", "floor", "floor", "inner_wall", "floor", "floor", "water", "right_lower", "right_upper"),
+        listOf("left_upper", "left_lower", "inner_wall", "floor", "floor", "floor", "floor", "floor", "floor", "floor", "floor", "water", "right_lower", "right_upper"),
         listOf("left_upper", "left_lower", "floor", "floor", "floor", "floor", "floor", "floor", "floor", "floor", "floor", "water", "right_lower", "right_upper"),
         listOf("left_upper", "left_lower", "floor", "floor", "floor", "floor", "inner_wall", "floor", "floor", "floor", "floor", "water", "right_lower", "right_upper"),
         listOf("left_upper", "left_lower", "inner_wall", "water", "water", "water", "water", "water", "water", "water", "inner_wall", "water", "right_lower", "right_upper"),
@@ -1741,7 +1795,7 @@ fun createAllLevels(): List<Level> {
     )
 
     val hardGame3 = gameMapFromTileIds(
-        id = "hard level 3",
+        id = "Hard level 3",
         startX = 6,
         startY = 7,
         goalX = 7,
@@ -1874,19 +1928,31 @@ fun GameScreen(
             )
             Spacer(Modifier.height(8.dp))
 
+            // one base painter for all arrows
+            val commandArrowPainter = painterResource(R.drawable.command_arrow)
+
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-
                 Command.values().forEach { cmd ->
-                    val label = commandLabel(cmd)
+
+                    val rotation = when (cmd) {
+                        Command.MOVE_UP    ->  90f
+                        Command.MOVE_DOWN  -> -90f
+                        Command.MOVE_LEFT  ->   0f
+                        Command.MOVE_RIGHT -> 180f
+                    }
 
                     Box(
                         modifier = Modifier
                             .size(56.dp)
-                            .border(1.dp, Color.Black)
-                            .background(Color.White)
+                            .background(Color(0xFF1A242E)) // dark panel
+                            .border(
+                                width = 2.dp,
+                                color = MaterialTheme.colorScheme.primary, // your green accent
+                                shape = RoundedCornerShape(10.dp)
+                            )
                             .dragAndDropSource(
                                 transferData = {
                                     DragAndDropTransferData(
@@ -1904,9 +1970,13 @@ fun GameScreen(
                             ),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            text = label,
-                            style = MaterialTheme.typography.headlineSmall
+                        Image(
+                            painter = commandArrowPainter,
+                            contentDescription = cmd.name,
+                            modifier = Modifier
+                                .size(40.dp)
+                                .graphicsLayer(rotationZ = rotation),
+                            contentScale = ContentScale.Fit
                         )
                     }
                 }
@@ -1967,15 +2037,41 @@ fun GameScreen(
 
             if (program.isNotEmpty()) {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     program.forEachIndexed { index, cmd ->
-                        Surface {
-                            Text(
-                                text = "${index + 1}: ${commandLabel(cmd)}",
-                                modifier = Modifier.padding(6.dp)
-                            )
+                        val rotation = when (cmd) {
+                            Command.MOVE_UP    ->  90f
+                            Command.MOVE_DOWN  -> -90f
+                            Command.MOVE_LEFT  ->   0f
+                            Command.MOVE_RIGHT -> 180f
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = Color(0xFF222222)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(4.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Image(
+                                    painter = commandArrowPainter,
+                                    contentDescription = cmd.name,
+                                    modifier = Modifier
+                                        .size(28.dp)
+                                        .graphicsLayer(rotationZ = rotation),
+                                    contentScale = ContentScale.Fit
+                                )
+                                Text(
+                                    text = "${index + 1}",
+                                    color = Color.White,
+                                    style = MaterialTheme.typography.labelSmall
+                                )
+                            }
                         }
                     }
                 }
